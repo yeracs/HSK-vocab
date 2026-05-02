@@ -1,0 +1,1184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#0f172a" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="HSK Study" />
+<title>HSK Study</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232563eb'/%3E%3Ctext x='32' y='44' font-size='36' text-anchor='middle' fill='white' font-family='system-ui'%3E汉%3C/text%3E%3C/svg%3E" />
+<style>
+  :root {
+    --bg: #f7f7f8;
+    --surface: #ffffff;
+    --surface-2: #f0f1f4;
+    --text: #0f172a;
+    --text-dim: #6b7280;
+    --border: #e5e7eb;
+    --accent: #2563eb;
+    --accent-text: #ffffff;
+    --soft-blue: #6b8fc4;          /* English meaning */
+    --good: #16a34a;
+    --bad: #dc2626;
+    --good-soft: #86c79a;           /* softer mark buttons */
+    --bad-soft: #d99a9a;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+    --radius: 16px;
+    --radius-sm: 10px;
+  }
+  [data-theme="dark"] {
+    --bg: #0b0d12;
+    --surface: #15181f;
+    --surface-2: #1d2129;
+    --text: #f3f4f6;
+    --text-dim: #9aa3b2;
+    --border: #262b35;
+    --accent: #3b82f6;
+    --accent-text: #ffffff;
+    --soft-blue: #8aa9d6;
+    --good: #22c55e;
+    --bad: #ef4444;
+    --good-soft: #5fa074;
+    --bad-soft: #b87575;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.4);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+  #app {
+    max-width: 720px;
+    margin: 0 auto;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px 8px;
+  }
+  .topbar h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: .2px;
+  }
+  .iconbtn {
+    background: transparent;
+    border: 0;
+    color: var(--text);
+    padding: 8px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 38px;
+    min-height: 38px;
+  }
+  .iconbtn:hover { background: var(--surface-2); }
+  .iconbtn.active { background: var(--surface-2); color: var(--accent); }
+
+  .screen { padding: 8px 18px 24px; flex: 1; display: flex; flex-direction: column; }
+  .screen.hidden { display: none; }
+
+  /* Home */
+  .lead { color: var(--text-dim); font-size: 14px; margin: 4px 0 18px; }
+  .level-grid { display: grid; gap: 10px; }
+  .level-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    cursor: pointer;
+    transition: transform .08s ease, box-shadow .15s ease, border-color .15s ease;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    width: 100%;
+  }
+  .level-card:hover { box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+  .level-card:active { transform: scale(.99); }
+  .level-card .lc-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .level-card .lc-title { font-weight: 600; font-size: 16px; }
+  .level-card .lc-sub { color: var(--text-dim); font-size: 13px; }
+  .level-card .lc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: 0 0 auto; }
+  .level-card .lc-pct { font-size: 12px; color: var(--text-dim); }
+  .progress {
+    width: 90px; height: 6px; background: var(--surface-2); border-radius: 999px; overflow: hidden;
+  }
+  .progress > span { display:block; height:100%; background: var(--accent); width: 0%; transition: width .2s; }
+
+  /* Settings panel (sheet) */
+  .sheet-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.4);
+    display: none; z-index: 50;
+  }
+  .sheet-backdrop.show { display: block; }
+  .sheet {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: var(--surface);
+    border-top-left-radius: 22px; border-top-right-radius: 22px;
+    padding: 14px 18px calc(20px + env(safe-area-inset-bottom));
+    z-index: 51;
+    transform: translateY(100%);
+    transition: transform .22s ease;
+    max-width: 720px;
+    margin: 0 auto;
+    box-shadow: 0 -8px 30px rgba(0,0,0,.2);
+  }
+  .sheet.show { transform: translateY(0); }
+  .sheet h3 { margin: 6px 0 14px; font-size: 16px; }
+  .sheet .grab { width: 36px; height: 4px; background: var(--border); border-radius: 99px; margin: 0 auto 12px; }
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--border); }
+  .row:first-of-type { border-top: 0; }
+  .row .label { font-size: 14px; }
+  .row .hint { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+
+  .seg {
+    display: inline-flex;
+    background: var(--surface-2);
+    border-radius: 99px;
+    padding: 3px;
+  }
+  .seg button {
+    border: 0; background: transparent; color: var(--text-dim);
+    padding: 7px 12px; border-radius: 99px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  [data-theme="dark"] .seg button.on { background: #2a313d; }
+
+  .switch { position: relative; width: 44px; height: 26px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .slider { position: absolute; inset: 0; background: var(--surface-2); border-radius: 99px; transition: background .15s; cursor: pointer; }
+  .switch .slider:before { content:""; position: absolute; left: 3px; top: 3px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .switch input:checked + .slider { background: var(--accent); }
+  .switch input:checked + .slider:before { transform: translateX(18px); }
+
+  /* Study */
+  .study-top {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 10px;
+  }
+  .study-top .meta { font-size: 13px; color: var(--text-dim); }
+  .stack { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 320px; padding: 12px 0; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    box-shadow: var(--shadow);
+    width: 100%;
+    max-width: 480px;
+    min-height: 60vh;
+    /* Hanzi is anchored at a fixed top offset (padding-top) so it sits in
+       the same vertical position on every card, regardless of example length.
+       The reveal area flows below and the card can grow taller for long examples. */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 15vh 22px 28px;
+    cursor: pointer;
+    position: relative;
+    transition: transform .18s ease, opacity .18s ease;
+    overflow: visible;
+  }
+  /* Allow text selection on card text but keep hint un-selectable */
+  .card .prompt, .card .reveal-zone { user-select: text; -webkit-user-select: text; }
+  .card .tap-hint { user-select: none; -webkit-user-select: none; }
+  .prompt-zone {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+  .reveal-zone {
+    width: 100%;
+    text-align: center;
+  }
+  .card .prompt {
+    font-size: clamp(56px, 14vw, 110px);
+    line-height: 1.1;
+    text-align: center;
+    font-weight: 500;
+    word-break: break-word;
+  }
+  .card.eng .prompt { font-size: clamp(28px, 6vw, 44px); font-weight: 600; }
+
+  /* Reveal items - opacity-only so layout never shifts */
+  .reveal-zone .pinyin,
+  .reveal-zone .eng-meaning,
+  .reveal-zone .example {
+    opacity: 0;
+    transition: opacity .15s ease;
+  }
+  .card.flipped .reveal-zone .pinyin,
+  .card.flipped .reveal-zone .eng-meaning,
+  .card.flipped .reveal-zone .example { opacity: 1; }
+  /* Peek shows ONLY the word's pinyin in the same place as the back */
+  .card.peeking .reveal-zone > .pinyin { opacity: 1; }
+
+  .reveal-zone .pinyin {
+    font-size: clamp(20px, 4vw, 26px);
+    color: var(--text);
+    font-weight: 500;
+    letter-spacing: .3px;
+  }
+  .reveal-zone .eng-meaning {
+    margin-top: 10px;
+    color: var(--soft-blue);
+    font-size: clamp(18px, 3.6vw, 22px);
+    font-weight: 500;
+  }
+  .reveal-zone .example {
+    margin-top: 18px;
+    line-height: 1.55;
+    max-width: 360px;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+  }
+  .reveal-zone .example .ex-hanzi { color: var(--text); font-size: 17px; }
+  /* Compensate for the visual whitespace in trailing full-width punctuation
+     (。 ！ ？ ， etc.) so centered text doesn't look left-shifted. */
+  .reveal-zone .example .ex-hanzi.has-trail-punct { padding-left: 0.5em; }
+  .reveal-zone .example .ex-pinyin { color: var(--text); font-size: 14px; opacity: .85; margin-top: 2px; }
+  .reveal-zone .example .ex-eng { color: var(--soft-blue); font-size: 14px; margin-top: 4px; }
+  /* When card is in EN mode (English on front), reveal shows hanzi too */
+  .reveal-zone .hanzi-answer { font-size: clamp(40px, 8vw, 64px); font-weight: 500; opacity: 0; transition: opacity .15s ease; margin-bottom: 8px; }
+  .card.flipped .reveal-zone .hanzi-answer { opacity: 1; }
+
+  .card .tap-hint { position: absolute; bottom: 14px; left: 0; right: 0; text-align: center; color: var(--text-dim); font-size: 12px; }
+  .card.flipped .tap-hint, .card.peeking .tap-hint { display: none; }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 8px 0 4px;
+  }
+  .actions button {
+    padding: 16px;
+    border-radius: 14px;
+    border: 0;
+    font: inherit;
+    font-size: 22px;
+    font-weight: 600;
+    cursor: pointer;
+    color: white;
+    line-height: 1;
+  }
+  .btn-bad { background: var(--bad-soft); }
+  .btn-good { background: var(--good-soft); }
+  .actions button:active { transform: translateY(1px); filter: brightness(.95); }
+
+  .secondary-row { display: flex; gap: 8px; justify-content: center; padding-top: 10px; flex-wrap: wrap; }
+  .pill {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 99px;
+    padding: 8px 14px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .pill:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+
+  /* Done screen */
+  .done {
+    display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 30px 12px;
+    background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border);
+  }
+  .done .stat-row { display: flex; gap: 20px; }
+  .stat { text-align: center; }
+  .stat .num { font-size: 36px; font-weight: 700; }
+  .stat .lbl { color: var(--text-dim); font-size: 13px; }
+  .done .btn-good, .done .btn-primary { padding: 12px 22px; border-radius: 12px; border: 0; color: white; cursor: pointer; font: inherit; font-weight: 600; font-size: 15px; }
+  .btn-primary { background: var(--accent); }
+  .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 12px 18px; border-radius: 12px; cursor: pointer; font: inherit; font-size: 15px; }
+
+  .toast {
+    position: fixed; bottom: calc(20px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+    background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 99px; font-size: 13px;
+    opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 80;
+  }
+  .toast.show { opacity: 0.95; }
+
+  .loading { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .footer-note { color: var(--text-dim); font-size: 12px; text-align: center; padding: 18px 0 6px; }
+
+  @media (max-width: 380px) {
+    .topbar h1 { font-size: 16px; }
+    .level-card .lc-title { font-size: 15px; }
+  }
+</style>
+</head>
+<body data-theme="light">
+<div id="app">
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <button class="iconbtn" id="backBtn" title="Back" style="display:none">‹</button>
+    <h1 id="title">HSK Study</h1>
+    <button class="iconbtn" id="settingsBtn" title="Settings" aria-label="Settings">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </header>
+
+  <!-- Home screen -->
+  <section id="home" class="screen">
+    <p class="lead">Pick a level to start studying.</p>
+    <div class="level-grid" id="levelGrid"></div>
+    <p class="footer-note">Tap the gear for theme, audio, and direction options.</p>
+  </section>
+
+  <!-- Study screen -->
+  <section id="study" class="screen hidden">
+    <div class="study-top">
+      <div class="meta" id="studyMeta">0 / 0</div>
+      <div class="meta" id="studyTallies"><span style="color:var(--good)">✓ 0</span> · <span style="color:var(--bad)">✗ 0</span></div>
+    </div>
+    <div class="stack">
+      <div class="card" id="card" tabindex="0" aria-label="Study card. Tap to flip.">
+        <div class="prompt-zone">
+          <div class="prompt" id="prompt">—</div>
+        </div>
+        <div class="reveal-zone" id="revealZone"></div>
+        <div class="tap-hint" id="tapHint">Tap to flip · Hold for pinyin</div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn-bad" id="markWrong" aria-label="Mark wrong">✗</button>
+      <button class="btn-good" id="markRight" aria-label="Mark right">✓</button>
+    </div>
+    <div class="secondary-row">
+      <button class="pill" id="speakBtn" title="Play audio">🔊 Audio</button>
+      <button class="pill" id="flipBtn">Flip</button>
+      <button class="pill" id="endBtn">End</button>
+      <button class="pill" id="prevBtn" title="Previous card">‹ Prev</button>
+      <button class="pill" id="nextBtn" title="Next card">Next ›</button>
+    </div>
+  </section>
+
+  <!-- Done screen -->
+  <section id="done" class="screen hidden">
+    <div class="done">
+      <h2 style="margin:0">Session complete</h2>
+      <div class="stat-row">
+        <div class="stat"><div class="num" id="rightNum" style="color:var(--good)">0</div><div class="lbl">Right</div></div>
+        <div class="stat"><div class="num" id="wrongNum" style="color:var(--bad)">0</div><div class="lbl">Wrong</div></div>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center">
+        <button class="btn-primary" id="retryWrong">Retry wrong pile</button>
+        <button class="btn-ghost" id="restartLevel">Restart level</button>
+        <button class="btn-ghost" id="homeFromDone">Back to levels</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Settings sheet -->
+<div class="sheet-backdrop" id="sheetBackdrop"></div>
+<aside class="sheet" id="sheet" role="dialog" aria-modal="true">
+  <div class="grab"></div>
+  <h3>Settings</h3>
+  <div class="row">
+    <div>
+      <div class="label">Show me</div>
+      <div class="hint">What appears on the front of the card</div>
+    </div>
+    <div class="seg" id="segDirection">
+      <button data-val="cn" class="on">Hanzi</button>
+      <button data-val="en">English</button>
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <div class="label">Shuffle order</div>
+      <div class="hint">Randomize cards each session</div>
+    </div>
+    <label class="switch"><input type="checkbox" id="optShuffle" /><span class="slider"></span></label>
+  </div>
+  <div class="row">
+    <div>
+      <div class="label">Auto-play audio</div>
+      <div class="hint">Speak hanzi automatically when shown</div>
+    </div>
+    <label class="switch"><input type="checkbox" id="optAutoAudio" /><span class="slider"></span></label>
+  </div>
+  <div class="row" style="flex-direction:column; align-items:stretch; gap:8px">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+      <div>
+        <div class="label">Voice</div>
+        <div class="hint">Mandarin voices installed on this device</div>
+      </div>
+      <select id="voiceSelect" style="background:var(--surface-2); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:8px 10px; font:inherit; font-size:13px; max-width:60%"></select>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+      <div>
+        <div class="label">Speech speed</div>
+        <div class="hint"><span id="rateLabel">0.85×</span></div>
+      </div>
+      <input id="rateInput" type="range" min="0.5" max="1.2" step="0.05" value="0.85" style="width:50%"/>
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <div class="label">Dark mode</div>
+      <div class="hint">Switch theme</div>
+    </div>
+    <label class="switch"><input type="checkbox" id="optDark" /><span class="slider"></span></label>
+  </div>
+  <div class="row">
+    <div>
+      <div class="label">Reset progress</div>
+      <div class="hint">Clear right/wrong piles for all levels</div>
+    </div>
+    <button class="pill" id="resetProgress">Reset</button>
+  </div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   HSK 1 vocabulary (embedded — works offline)
+   Source: original HSK 1 (150-word) standard list.
+   Fields: h = hanzi, p = pinyin, e = english, s = example sentence (optional)
+   ========================================================= */
+const HSK1 = [
+  {h:"爱",p:"ài",e:"to love",s:"我爱你。 — Wǒ ài nǐ. — I love you."},
+  {h:"八",p:"bā",e:"eight",s:"我有八本书。 — Wǒ yǒu bā běn shū. — I have eight books."},
+  {h:"爸爸",p:"bàba",e:"dad, father",s:"我爸爸是医生。 — Wǒ bàba shì yīshēng. — My dad is a doctor."},
+  {h:"杯子",p:"bēizi",e:"cup, glass",s:"这是我的杯子。 — Zhè shì wǒ de bēizi. — This is my cup."},
+  {h:"北京",p:"Běijīng",e:"Beijing",s:"我住在北京。 — Wǒ zhù zài Běijīng. — I live in Beijing."},
+  {h:"本",p:"běn",e:"measure word for books",s:"一本书 — yì běn shū — one book"},
+  {h:"不客气",p:"bú kèqi",e:"you're welcome",s:"不客气! — Bú kèqi! — You're welcome!"},
+  {h:"不",p:"bù",e:"no, not",s:"我不去。 — Wǒ bú qù. — I'm not going."},
+  {h:"菜",p:"cài",e:"dish, vegetable",s:"这个菜很好吃。 — Zhège cài hěn hǎochī. — This dish is delicious."},
+  {h:"茶",p:"chá",e:"tea",s:"我喜欢喝茶。 — Wǒ xǐhuan hē chá. — I like to drink tea."},
+  {h:"吃",p:"chī",e:"to eat",s:"我们一起吃饭吧。 — Wǒmen yìqǐ chīfàn ba. — Let's eat together."},
+  {h:"出租车",p:"chūzūchē",e:"taxi",s:"我们坐出租车去。 — Wǒmen zuò chūzūchē qù. — Let's take a taxi."},
+  {h:"打电话",p:"dǎ diànhuà",e:"to make a phone call",s:"我给妈妈打电话。 — Wǒ gěi māma dǎ diànhuà. — I'm calling mom."},
+  {h:"大",p:"dà",e:"big",s:"我家很大。 — Wǒ jiā hěn dà. — My home is big."},
+  {h:"的",p:"de",e:"(possessive particle)",s:"我的书 — wǒ de shū — my book"},
+  {h:"点",p:"diǎn",e:"o'clock",s:"现在三点。 — Xiànzài sān diǎn. — It's three o'clock."},
+  {h:"电脑",p:"diànnǎo",e:"computer",s:"我用电脑工作。 — Wǒ yòng diànnǎo gōngzuò. — I use a computer to work."},
+  {h:"电视",p:"diànshì",e:"television",s:"我在看电视。 — Wǒ zài kàn diànshì. — I'm watching TV."},
+  {h:"电影",p:"diànyǐng",e:"movie",s:"我们去看电影。 — Wǒmen qù kàn diànyǐng. — Let's go see a movie."},
+  {h:"东西",p:"dōngxi",e:"thing, stuff",s:"我要买东西。 — Wǒ yào mǎi dōngxi. — I want to buy things."},
+  {h:"都",p:"dōu",e:"all, both",s:"我们都是学生。 — Wǒmen dōu shì xuésheng. — We are all students."},
+  {h:"读",p:"dú",e:"to read",s:"我喜欢读书。 — Wǒ xǐhuan dúshū. — I like to read."},
+  {h:"对不起",p:"duìbuqǐ",e:"sorry",s:"对不起,我迟到了。 — Duìbuqǐ, wǒ chídào le. — Sorry, I'm late."},
+  {h:"多",p:"duō",e:"many, much",s:"人很多。 — Rén hěn duō. — There are many people."},
+  {h:"多少",p:"duōshao",e:"how many, how much",s:"这个多少钱? — Zhège duōshao qián? — How much is this?"},
+  {h:"儿子",p:"érzi",e:"son",s:"他有一个儿子。 — Tā yǒu yí gè érzi. — He has a son."},
+  {h:"二",p:"èr",e:"two",s:"二加二等于四。 — Èr jiā èr děngyú sì. — Two plus two equals four."},
+  {h:"饭店",p:"fàndiàn",e:"restaurant; hotel",s:"我们去饭店吃饭。 — Wǒmen qù fàndiàn chīfàn. — Let's go eat at a restaurant."},
+  {h:"飞机",p:"fēijī",e:"airplane",s:"我坐飞机去北京。 — Wǒ zuò fēijī qù Běijīng. — I'm taking a plane to Beijing."},
+  {h:"分钟",p:"fēnzhōng",e:"minute",s:"等我五分钟。 — Děng wǒ wǔ fēnzhōng. — Wait five minutes for me."},
+  {h:"高兴",p:"gāoxìng",e:"happy",s:"认识你很高兴。 — Rènshi nǐ hěn gāoxìng. — Nice to meet you."},
+  {h:"个",p:"gè",e:"(general measure word)",s:"一个人 — yí gè rén — one person"},
+  {h:"工作",p:"gōngzuò",e:"work; job",s:"我在公司工作。 — Wǒ zài gōngsī gōngzuò. — I work at a company."},
+  {h:"狗",p:"gǒu",e:"dog",s:"我家有一只狗。 — Wǒ jiā yǒu yì zhī gǒu. — My family has a dog."},
+  {h:"汉语",p:"Hànyǔ",e:"Chinese (language)",s:"我学习汉语。 — Wǒ xuéxí Hànyǔ. — I study Chinese."},
+  {h:"好",p:"hǎo",e:"good; well",s:"你好! — Nǐ hǎo! — Hello!"},
+  {h:"号",p:"hào",e:"number; day of month",s:"今天几号? — Jīntiān jǐ hào? — What's today's date?"},
+  {h:"喝",p:"hē",e:"to drink",s:"我想喝水。 — Wǒ xiǎng hē shuǐ. — I want to drink water."},
+  {h:"和",p:"hé",e:"and; with",s:"我和你 — wǒ hé nǐ — me and you"},
+  {h:"很",p:"hěn",e:"very",s:"很好。 — Hěn hǎo. — Very good."},
+  {h:"后面",p:"hòumian",e:"behind",s:"在椅子后面。 — Zài yǐzi hòumian. — Behind the chair."},
+  {h:"回",p:"huí",e:"to return",s:"我要回家。 — Wǒ yào huí jiā. — I want to go home."},
+  {h:"会",p:"huì",e:"can; will",s:"我会说汉语。 — Wǒ huì shuō Hànyǔ. — I can speak Chinese."},
+  {h:"几",p:"jǐ",e:"how many (small number)",s:"你几岁? — Nǐ jǐ suì? — How old are you?"},
+  {h:"家",p:"jiā",e:"home; family",s:"我家在北京。 — Wǒ jiā zài Běijīng. — My home is in Beijing."},
+  {h:"叫",p:"jiào",e:"to be called",s:"你叫什么名字? — Nǐ jiào shénme míngzi? — What's your name?"},
+  {h:"今天",p:"jīntiān",e:"today",s:"今天天气很好。 — Jīntiān tiānqì hěn hǎo. — The weather is nice today."},
+  {h:"九",p:"jiǔ",e:"nine",s:"九点见。 — Jiǔ diǎn jiàn. — See you at nine."},
+  {h:"开",p:"kāi",e:"to open; to drive",s:"请开门。 — Qǐng kāi mén. — Please open the door."},
+  {h:"看",p:"kàn",e:"to look; to read",s:"我在看书。 — Wǒ zài kàn shū. — I'm reading a book."},
+  {h:"看见",p:"kànjiàn",e:"to see",s:"我看见他了。 — Wǒ kànjiàn tā le. — I saw him."},
+  {h:"块",p:"kuài",e:"piece; yuan (money)",s:"五块钱。 — Wǔ kuài qián. — Five yuan."},
+  {h:"来",p:"lái",e:"to come",s:"你来吗? — Nǐ lái ma? — Are you coming?"},
+  {h:"老师",p:"lǎoshī",e:"teacher",s:"她是我的老师。 — Tā shì wǒ de lǎoshī. — She is my teacher."},
+  {h:"了",p:"le",e:"(aspect particle)",s:"我吃了。 — Wǒ chī le. — I've eaten."},
+  {h:"冷",p:"lěng",e:"cold",s:"今天很冷。 — Jīntiān hěn lěng. — It's cold today."},
+  {h:"里",p:"lǐ",e:"inside",s:"在家里。 — Zài jiā lǐ. — At home."},
+  {h:"六",p:"liù",e:"six",s:"六点起床。 — Liù diǎn qǐchuáng. — Get up at six."},
+  {h:"妈妈",p:"māma",e:"mom, mother",s:"妈妈做饭。 — Māma zuò fàn. — Mom is cooking."},
+  {h:"吗",p:"ma",e:"(question particle)",s:"你好吗? — Nǐ hǎo ma? — How are you?"},
+  {h:"买",p:"mǎi",e:"to buy",s:"我想买一本书。 — Wǒ xiǎng mǎi yì běn shū. — I want to buy a book."},
+  {h:"猫",p:"māo",e:"cat",s:"我喜欢猫。 — Wǒ xǐhuan māo. — I like cats."},
+  {h:"没",p:"méi",e:"not (have)",s:"我没钱。 — Wǒ méi qián. — I have no money."},
+  {h:"没关系",p:"méi guānxi",e:"it doesn't matter",s:"没关系! — Méi guānxi! — It doesn't matter!"},
+  {h:"米饭",p:"mǐfàn",e:"cooked rice",s:"我要一碗米饭。 — Wǒ yào yì wǎn mǐfàn. — I'd like a bowl of rice."},
+  {h:"名字",p:"míngzi",e:"name",s:"我的名字叫小明。 — Wǒ de míngzi jiào Xiǎomíng. — My name is Xiaoming."},
+  {h:"明天",p:"míngtiān",e:"tomorrow",s:"明天见! — Míngtiān jiàn! — See you tomorrow!"},
+  {h:"哪",p:"nǎ",e:"which",s:"哪个? — Nǎge? — Which one?"},
+  {h:"哪儿",p:"nǎr",e:"where",s:"你在哪儿? — Nǐ zài nǎr? — Where are you?"},
+  {h:"那",p:"nà",e:"that",s:"那是什么? — Nà shì shénme? — What's that?"},
+  {h:"呢",p:"ne",e:"(question particle)",s:"你呢? — Nǐ ne? — And you?"},
+  {h:"能",p:"néng",e:"can; be able to",s:"我能帮你。 — Wǒ néng bāng nǐ. — I can help you."},
+  {h:"你",p:"nǐ",e:"you",s:"你好! — Nǐ hǎo! — Hello!"},
+  {h:"年",p:"nián",e:"year",s:"明年我去中国。 — Míngnián wǒ qù Zhōngguó. — Next year I'm going to China."},
+  {h:"女儿",p:"nǚ'ér",e:"daughter",s:"她有一个女儿。 — Tā yǒu yí gè nǚ'ér. — She has a daughter."},
+  {h:"朋友",p:"péngyou",e:"friend",s:"他是我的朋友。 — Tā shì wǒ de péngyou. — He is my friend."},
+  {h:"漂亮",p:"piàoliang",e:"pretty, beautiful",s:"她很漂亮。 — Tā hěn piàoliang. — She is beautiful."},
+  {h:"苹果",p:"píngguǒ",e:"apple",s:"我喜欢吃苹果。 — Wǒ xǐhuan chī píngguǒ. — I like to eat apples."},
+  {h:"七",p:"qī",e:"seven",s:"一周有七天。 — Yì zhōu yǒu qī tiān. — A week has seven days."},
+  {h:"前面",p:"qiánmian",e:"in front",s:"在我前面。 — Zài wǒ qiánmian. — In front of me."},
+  {h:"钱",p:"qián",e:"money",s:"多少钱? — Duōshao qián? — How much?"},
+  {h:"请",p:"qǐng",e:"please; to invite",s:"请坐。 — Qǐng zuò. — Please sit."},
+  {h:"去",p:"qù",e:"to go",s:"我们去吧。 — Wǒmen qù ba. — Let's go."},
+  {h:"热",p:"rè",e:"hot",s:"今天很热。 — Jīntiān hěn rè. — It's hot today."},
+  {h:"人",p:"rén",e:"person",s:"他是好人。 — Tā shì hǎo rén. — He is a good person."},
+  {h:"认识",p:"rènshi",e:"to know (a person)",s:"很高兴认识你。 — Hěn gāoxìng rènshi nǐ. — Nice to meet you."},
+  {h:"三",p:"sān",e:"three",s:"三个人 — sān gè rén — three people"},
+  {h:"商店",p:"shāngdiàn",e:"shop, store",s:"商店在那儿。 — Shāngdiàn zài nàr. — The store is over there."},
+  {h:"上",p:"shàng",e:"up; on; above",s:"在桌子上。 — Zài zhuōzi shàng. — On the table."},
+  {h:"上午",p:"shàngwǔ",e:"morning",s:"上午我有课。 — Shàngwǔ wǒ yǒu kè. — I have class in the morning."},
+  {h:"少",p:"shǎo",e:"few, little",s:"水太少了。 — Shuǐ tài shǎo le. — There's too little water."},
+  {h:"谁",p:"shéi",e:"who",s:"他是谁? — Tā shì shéi? — Who is he?"},
+  {h:"什么",p:"shénme",e:"what",s:"这是什么? — Zhè shì shénme? — What is this?"},
+  {h:"十",p:"shí",e:"ten",s:"十点了。 — Shí diǎn le. — It's ten o'clock."},
+  {h:"时候",p:"shíhou",e:"time, moment",s:"什么时候? — Shénme shíhou? — When?"},
+  {h:"是",p:"shì",e:"to be",s:"我是学生。 — Wǒ shì xuésheng. — I am a student."},
+  {h:"书",p:"shū",e:"book",s:"这是我的书。 — Zhè shì wǒ de shū. — This is my book."},
+  {h:"水",p:"shuǐ",e:"water",s:"我要喝水。 — Wǒ yào hē shuǐ. — I want to drink water."},
+  {h:"水果",p:"shuǐguǒ",e:"fruit",s:"我喜欢吃水果。 — Wǒ xǐhuan chī shuǐguǒ. — I like to eat fruit."},
+  {h:"睡觉",p:"shuìjiào",e:"to sleep",s:"我要睡觉了。 — Wǒ yào shuìjiào le. — I'm going to sleep."},
+  {h:"说话",p:"shuōhuà",e:"to speak, talk",s:"她在说话。 — Tā zài shuōhuà. — She is speaking."},
+  {h:"四",p:"sì",e:"four",s:"四个苹果 — sì gè píngguǒ — four apples"},
+  {h:"岁",p:"suì",e:"years (of age)",s:"我二十岁。 — Wǒ èrshí suì. — I'm twenty years old."},
+  {h:"他",p:"tā",e:"he, him",s:"他是老师。 — Tā shì lǎoshī. — He is a teacher."},
+  {h:"她",p:"tā",e:"she, her",s:"她很漂亮。 — Tā hěn piàoliang. — She is beautiful."},
+  {h:"太",p:"tài",e:"too, excessively",s:"太贵了! — Tài guì le! — Too expensive!"},
+  {h:"天气",p:"tiānqì",e:"weather",s:"今天天气真好。 — Jīntiān tiānqì zhēn hǎo. — The weather is really nice today."},
+  {h:"听",p:"tīng",e:"to listen",s:"我在听音乐。 — Wǒ zài tīng yīnyuè. — I'm listening to music."},
+  {h:"同学",p:"tóngxué",e:"classmate",s:"他是我的同学。 — Tā shì wǒ de tóngxué. — He is my classmate."},
+  {h:"喂",p:"wèi",e:"hello (on phone)",s:"喂,你好。 — Wéi, nǐ hǎo. — Hello (on the phone)."},
+  {h:"我",p:"wǒ",e:"I, me",s:"我是中国人。 — Wǒ shì Zhōngguó rén. — I'm Chinese."},
+  {h:"我们",p:"wǒmen",e:"we, us",s:"我们是朋友。 — Wǒmen shì péngyou. — We are friends."},
+  {h:"五",p:"wǔ",e:"five",s:"五只猫 — wǔ zhī māo — five cats"},
+  {h:"喜欢",p:"xǐhuan",e:"to like",s:"我喜欢你。 — Wǒ xǐhuan nǐ. — I like you."},
+  {h:"下",p:"xià",e:"down; below",s:"在桌子下。 — Zài zhuōzi xià. — Under the table."},
+  {h:"下午",p:"xiàwǔ",e:"afternoon",s:"下午见。 — Xiàwǔ jiàn. — See you in the afternoon."},
+  {h:"下雨",p:"xiàyǔ",e:"to rain",s:"今天下雨了。 — Jīntiān xiàyǔ le. — It rained today."},
+  {h:"先生",p:"xiānsheng",e:"Mr.; sir; husband",s:"王先生在吗? — Wáng xiānsheng zài ma? — Is Mr. Wang here?"},
+  {h:"现在",p:"xiànzài",e:"now",s:"现在几点? — Xiànzài jǐ diǎn? — What time is it now?"},
+  {h:"想",p:"xiǎng",e:"to want; to think; to miss",s:"我想吃饭。 — Wǒ xiǎng chīfàn. — I want to eat."},
+  {h:"小",p:"xiǎo",e:"small",s:"小狗很可爱。 — Xiǎo gǒu hěn kě'ài. — The puppy is so cute."},
+  {h:"小姐",p:"xiǎojiě",e:"Miss",s:"李小姐 — Lǐ xiǎojiě — Miss Li"},
+  {h:"些",p:"xiē",e:"some, a few",s:"一些人 — yìxiē rén — some people"},
+  {h:"写",p:"xiě",e:"to write",s:"我在写字。 — Wǒ zài xiě zì. — I'm writing characters."},
+  {h:"谢谢",p:"xièxie",e:"thanks, thank you",s:"谢谢你! — Xièxie nǐ! — Thank you!"},
+  {h:"星期",p:"xīngqī",e:"week",s:"今天星期几? — Jīntiān xīngqī jǐ? — What day of the week is it today?"},
+  {h:"学生",p:"xuésheng",e:"student",s:"他是学生。 — Tā shì xuésheng. — He is a student."},
+  {h:"学习",p:"xuéxí",e:"to study",s:"我学习汉语。 — Wǒ xuéxí Hànyǔ. — I study Chinese."},
+  {h:"学校",p:"xuéxiào",e:"school",s:"我去学校。 — Wǒ qù xuéxiào. — I'm going to school."},
+  {h:"一",p:"yī",e:"one",s:"一个人 — yí gè rén — one person"},
+  {h:"衣服",p:"yīfu",e:"clothes",s:"这件衣服很漂亮。 — Zhè jiàn yīfu hěn piàoliang. — This piece of clothing is beautiful."},
+  {h:"医生",p:"yīshēng",e:"doctor",s:"他是医生。 — Tā shì yīshēng. — He is a doctor."},
+  {h:"医院",p:"yīyuàn",e:"hospital",s:"我去医院。 — Wǒ qù yīyuàn. — I'm going to the hospital."},
+  {h:"椅子",p:"yǐzi",e:"chair",s:"请坐椅子上。 — Qǐng zuò yǐzi shàng. — Please sit on the chair."},
+  {h:"有",p:"yǒu",e:"to have",s:"我有一本书。 — Wǒ yǒu yì běn shū. — I have a book."},
+  {h:"月",p:"yuè",e:"month",s:"五月 — wǔ yuè — May"},
+  {h:"再见",p:"zàijiàn",e:"goodbye",s:"明天再见! — Míngtiān zàijiàn! — See you tomorrow!"},
+  {h:"在",p:"zài",e:"at, in",s:"我在家。 — Wǒ zài jiā. — I'm at home."},
+  {h:"怎么",p:"zěnme",e:"how",s:"怎么去? — Zěnme qù? — How do we get there?"},
+  {h:"怎么样",p:"zěnmeyàng",e:"how about, how is it",s:"你觉得怎么样? — Nǐ juéde zěnmeyàng? — What do you think?"},
+  {h:"这",p:"zhè",e:"this",s:"这是什么? — Zhè shì shénme? — What is this?"},
+  {h:"中国",p:"Zhōngguó",e:"China",s:"我去中国。 — Wǒ qù Zhōngguó. — I'm going to China."},
+  {h:"中午",p:"zhōngwǔ",e:"noon",s:"中午吃饭。 — Zhōngwǔ chīfàn. — Eat at noon."},
+  {h:"住",p:"zhù",e:"to live (reside)",s:"我住在北京。 — Wǒ zhù zài Běijīng. — I live in Beijing."},
+  {h:"桌子",p:"zhuōzi",e:"table",s:"书在桌子上。 — Shū zài zhuōzi shàng. — The book is on the table."},
+  {h:"字",p:"zì",e:"character; word",s:"我会写汉字。 — Wǒ huì xiě Hànzì. — I can write Chinese characters."},
+  {h:"昨天",p:"zuótiān",e:"yesterday",s:"昨天我很忙。 — Zuótiān wǒ hěn máng. — I was busy yesterday."},
+  {h:"做",p:"zuò",e:"to do, make",s:"你在做什么? — Nǐ zài zuò shénme? — What are you doing?"},
+  {h:"坐",p:"zuò",e:"to sit",s:"请坐。 — Qǐng zuò. — Please sit."}
+];
+
+/* HSK levels metadata. Higher levels are fetched at runtime. */
+const LEVELS = [
+  { id: 1, name: "HSK 1", desc: "150 words · beginner", count: HSK1.length },
+  { id: 2, name: "HSK 2", desc: "300 words · elementary", count: 300 },
+  { id: 3, name: "HSK 3", desc: "600 words · intermediate basic", count: 600 },
+  { id: 4, name: "HSK 4", desc: "1200 words · intermediate", count: 1200 },
+  { id: 5, name: "HSK 5", desc: "2500 words · advanced", count: 2500 },
+  { id: 6, name: "HSK 6", desc: "5000 words · proficient", count: 5000 }
+];
+
+/* CDN sources for HSK 2-6. We try them in order; first success wins.
+   The data is then cached in localStorage so future loads are instant and offline. */
+const CDN_SOURCES = (level) => [
+  `https://cdn.jsdelivr.net/gh/drkameleon/complete-hsk-vocabulary@main/wordlists/old/${level}.json`,
+  `https://cdn.jsdelivr.net/gh/glxxyz/hskhsk.com@master/data/lists/HSK%20Official%20With%20Definitions%202012%20L${level}.txt`
+];
+
+/* =========================================================
+   State + storage
+   ========================================================= */
+const LS_KEY = "hsk-study-v1";
+const STATE = {
+  settings: {
+    theme: "light",
+    direction: "cn",   // "cn" -> show hanzi, "en" -> show english
+    shuffle: true,
+    autoAudio: false,
+    voiceURI: "",      // chosen voice (persisted)
+    rate: 0.85
+  },
+  // per-level: { right: [indexes], wrong: [indexes] }
+  progress: {},
+  // cached vocab for levels 2..6
+  cache: {}
+};
+
+function load() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const obj = JSON.parse(raw);
+    if (obj.settings) Object.assign(STATE.settings, obj.settings);
+    if (obj.progress) STATE.progress = obj.progress;
+    if (obj.cache)    STATE.cache    = obj.cache;
+  } catch(e){ console.warn("load failed", e); }
+}
+function save() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(STATE)); }
+  catch(e){ console.warn("save failed", e); }
+}
+
+/* =========================================================
+   Vocab loader
+   ========================================================= */
+async function getLevelWords(level) {
+  if (level === 1) return HSK1;
+  if (STATE.cache[level] && Array.isArray(STATE.cache[level]) && STATE.cache[level].length) {
+    return STATE.cache[level];
+  }
+  const sources = CDN_SOURCES(level);
+  let lastErr;
+  for (const url of sources) {
+    try {
+      const res = await fetch(url, { cache: "force-cache" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const text = await res.text();
+      let words = parseAny(text);
+      if (words && words.length) {
+        STATE.cache[level] = words;
+        save();
+        return words;
+      }
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("Could not load HSK " + level);
+}
+
+function parseAny(text) {
+  // Try JSON first
+  try {
+    const data = JSON.parse(text);
+    if (Array.isArray(data)) return data.map(normalizeEntry).filter(Boolean);
+  } catch(_) {}
+  // Plain text fallback (one entry per line, tab/space separated)
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+  const out = [];
+  for (const line of lines) {
+    // Common formats: hanzi\tpinyin\tdefinition  OR  hanzi pinyin definition
+    const parts = line.split(/\t+|\s{2,}|\s\/\s|;\s/);
+    if (parts.length >= 3) {
+      out.push({ h: parts[0], p: parts[1], e: parts.slice(2).join("; ") });
+    } else if (parts.length === 2) {
+      out.push({ h: parts[0], p: "", e: parts[1] });
+    }
+  }
+  return out;
+}
+
+function normalizeEntry(item) {
+  if (!item) return null;
+  // drkameleon format: { hanzi, pinyin, translations: [..] }  OR { simplified, pinyin, ... }
+  const h = item.h || item.hanzi || item.simplified || item.character || item.word || item.s || "";
+  const p = item.p || item.pinyin || item.pron || (item.forms && item.forms[0] && item.forms[0].transcriptions && item.forms[0].transcriptions.pinyin) || "";
+  let e = item.e || item.english || item.definition || item.meaning || "";
+  if (!e && Array.isArray(item.translations)) e = item.translations.join("; ");
+  if (!e && item.forms && item.forms[0] && Array.isArray(item.forms[0].meanings)) e = item.forms[0].meanings.join("; ");
+  if (!h) return null;
+  return { h: String(h), p: String(p), e: String(e), s: item.s || "" };
+}
+
+/* =========================================================
+   Session model — queue + position so we can navigate ↔
+   ========================================================= */
+const SESSION = {
+  level: null,
+  words: [],          // full word list for current level
+  queue: [],          // ordered word indexes for this session
+  pos: 0,             // 0-based index into queue
+  marks: {},          // { wordIdx: 'right' | 'wrong' }
+  flipped: false,
+  cur: null
+};
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/* Parse "X — Y — Z" or "X / Y / Z" example strings into hanzi/pinyin/english.
+   Whitespace is trimmed; terminal punctuation is preserved (it can be
+   meaning-bearing). Visual centering for full-width terminal punctuation
+   like 。！？ is handled in CSS via the .has-trail-punct class. */
+function parseExample(s) {
+  if (!s) return null;
+  const parts = s.split(/\s*[—–]\s*|\s+\/\s+/)
+    .map(p => p.trim())
+    .filter(Boolean);
+  return {
+    h: parts[0] || "",
+    p: parts[1] || "",
+    e: parts.slice(2).join(" — ") || ""
+  };
+}
+
+/* True when a string ends with a Chinese full-width punctuation mark whose
+   glyph leaves visual whitespace on the right side of its character box. */
+const FULLWIDTH_TRAILING = /[。！？，、；：]$/u;
+
+async function startSession(level, opts = {}) {
+  show("study"); setBack(true);
+  $("#title").textContent = `HSK ${level}`;
+  $("#prompt").textContent = "Loading…";
+  $("#revealZone").innerHTML = "";
+  let words;
+  try {
+    words = await getLevelWords(level);
+  } catch (e) {
+    $("#prompt").innerHTML = `<span style="font-size:14px;color:var(--text-dim)">Couldn't load HSK ${level}. Check your connection — levels 2–6 download once on first use.</span>`;
+    return;
+  }
+
+  let indexes;
+  if (opts.onlyIndexes) {
+    indexes = opts.onlyIndexes.slice();
+  } else {
+    indexes = words.map((_, i) => i);
+  }
+  if (STATE.settings.shuffle) indexes = shuffle(indexes);
+
+  SESSION.level = level;
+  SESSION.words = words;
+  SESSION.queue = indexes;
+  SESSION.pos = 0;
+  SESSION.marks = {};
+  SESSION.flipped = false;
+  goToCard(0);
+}
+
+function goToCard(pos) {
+  if (!SESSION.queue.length) { showDone(); return; }
+  if (pos < 0) pos = 0;
+  if (pos >= SESSION.queue.length) { showDone(); return; }
+  SESSION.pos = pos;
+  const idx = SESSION.queue[pos];
+  SESSION.cur = { idx, word: SESSION.words[idx] };
+  SESSION.flipped = false;
+  renderCard();
+  if (STATE.settings.autoAudio && STATE.settings.direction === "cn") {
+    setTimeout(() => speak(SESSION.cur.word.h), 200);
+  }
+}
+
+function nextCard() { goToCard(SESSION.pos + 1); }
+function prevCard() { goToCard(Math.max(0, SESSION.pos - 1)); }
+
+function renderCard() {
+  const card = $("#card");
+  const word = SESSION.cur.word;
+  const dir = STATE.settings.direction;
+  card.classList.remove("flipped", "eng", "peeking");
+
+  // Front (prompt-zone) — stays in same position whether flipped or not
+  if (dir === "cn") {
+    $("#prompt").textContent = word.h;
+  } else {
+    card.classList.add("eng");
+    $("#prompt").textContent = word.e;
+  }
+
+  // Back (reveal-zone) — same DOM is always rendered; visibility via CSS opacity
+  const ex = parseExample(word.s);
+  const exHanziClass = ex && FULLWIDTH_TRAILING.test(ex.h) ? "ex-hanzi has-trail-punct" : "ex-hanzi";
+  let revealHTML = "";
+  if (dir === "cn") {
+    revealHTML = `
+      <div class="pinyin">${escapeHtml(word.p || "")}</div>
+      <div class="eng-meaning">${escapeHtml(word.e || "")}</div>
+      ${ex ? `<div class="example">
+          <div class="${exHanziClass}">${escapeHtml(ex.h)}</div>
+          ${ex.p ? `<div class="ex-pinyin">${escapeHtml(ex.p)}</div>` : ``}
+          ${ex.e ? `<div class="ex-eng">${escapeHtml(ex.e)}</div>` : ``}
+        </div>` : ``}
+    `;
+  } else {
+    revealHTML = `
+      <div class="hanzi-answer">${escapeHtml(word.h)}</div>
+      <div class="pinyin">${escapeHtml(word.p || "")}</div>
+      ${ex ? `<div class="example">
+          <div class="${exHanziClass}">${escapeHtml(ex.h)}</div>
+          ${ex.p ? `<div class="ex-pinyin">${escapeHtml(ex.p)}</div>` : ``}
+          ${ex.e ? `<div class="ex-eng">${escapeHtml(ex.e)}</div>` : ``}
+        </div>` : ``}
+    `;
+  }
+  $("#revealZone").innerHTML = revealHTML;
+
+  // Header info
+  const total = SESSION.queue.length;
+  const done = countMarks().total;
+  $("#studyMeta").textContent = `${SESSION.pos + 1} / ${total}`;
+  const c = countMarks();
+  $("#studyTallies").innerHTML = `<span style="color:var(--good-soft)">✓ ${c.right}</span> · <span style="color:var(--bad-soft)">✗ ${c.wrong}</span>${done < total ? ` · <span style="color:var(--text-dim)">${total - done} left</span>` : ``}`;
+  $("#tapHint").textContent = (dir === "cn") ? "Tap to flip · Hold for pinyin" : "Tap to flip";
+}
+
+function countMarks() {
+  let right = 0, wrong = 0;
+  for (const v of Object.values(SESSION.marks)) {
+    if (v === "right") right++;
+    else if (v === "wrong") wrong++;
+  }
+  return { right, wrong, total: right + wrong };
+}
+
+function flipCard() {
+  SESSION.flipped = !SESSION.flipped;
+  $("#card").classList.toggle("flipped", SESSION.flipped);
+  $("#card").classList.remove("peeking");
+}
+
+function mark(correct) {
+  if (!SESSION.cur) return;
+  const idx = SESSION.cur.idx;
+  SESSION.marks[idx] = correct ? "right" : "wrong";
+  // Persist
+  const key = `lvl${SESSION.level}`;
+  const p = STATE.progress[key] || (STATE.progress[key] = { right: [], wrong: [] });
+  p.right = p.right.filter(i => i !== idx);
+  p.wrong = p.wrong.filter(i => i !== idx);
+  (correct ? p.right : p.wrong).push(idx);
+  save();
+  // If everything is marked, finish; otherwise advance
+  if (countMarks().total >= SESSION.queue.length) {
+    showDone();
+  } else {
+    // Find next unmarked card after current position; wrap if needed
+    let next = SESSION.pos + 1;
+    while (next < SESSION.queue.length && SESSION.marks[SESSION.queue[next]]) next++;
+    if (next >= SESSION.queue.length) {
+      // wrap to first unmarked
+      next = 0;
+      while (next < SESSION.queue.length && SESSION.marks[SESSION.queue[next]]) next++;
+    }
+    if (next < SESSION.queue.length) goToCard(next);
+    else showDone();
+  }
+}
+
+function showDone() {
+  show("done"); setBack(true);
+  $("#title").textContent = `HSK ${SESSION.level} — done`;
+  const c = countMarks();
+  $("#rightNum").textContent = c.right;
+  $("#wrongNum").textContent = c.wrong;
+  $("#retryWrong").disabled = c.wrong === 0;
+  $("#retryWrong").style.opacity = c.wrong === 0 ? 0.4 : 1;
+}
+
+function getWrongIndexes() {
+  return Object.entries(SESSION.marks)
+    .filter(([_, v]) => v === "wrong")
+    .map(([k, _]) => parseInt(k, 10));
+}
+
+/* =========================================================
+   Speech — voice picker + rate
+   ========================================================= */
+let zhVoices = [];
+let zhVoice = null;
+
+function refreshVoices() {
+  if (!("speechSynthesis" in window)) return;
+  const voices = speechSynthesis.getVoices() || [];
+  zhVoices = voices.filter(v =>
+    /^zh/i.test(v.lang) || /chinese|mandarin|普通话|国语|中文/i.test(v.name)
+  );
+  // Sort: enhanced/premium first, zh-CN before others
+  zhVoices.sort((a, b) => {
+    const ae = /enhanced|premium|neural|wavenet/i.test(a.name) ? 0 : 1;
+    const be = /enhanced|premium|neural|wavenet/i.test(b.name) ? 0 : 1;
+    if (ae !== be) return ae - be;
+    const acn = /zh(-|_)?CN/i.test(a.lang) ? 0 : 1;
+    const bcn = /zh(-|_)?CN/i.test(b.lang) ? 0 : 1;
+    if (acn !== bcn) return acn - bcn;
+    return a.name.localeCompare(b.name);
+  });
+  // Restore saved choice or default to first
+  if (STATE.settings.voiceURI) {
+    zhVoice = zhVoices.find(v => v.voiceURI === STATE.settings.voiceURI) || zhVoices[0] || null;
+  } else {
+    zhVoice = zhVoices[0] || null;
+  }
+  populateVoiceSelect();
+}
+
+function populateVoiceSelect() {
+  const sel = $("#voiceSelect");
+  if (!sel) return;
+  if (!zhVoices.length) {
+    sel.innerHTML = `<option>No Chinese voice installed</option>`;
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  sel.innerHTML = zhVoices.map(v => {
+    const tag = /enhanced|premium|neural|wavenet/i.test(v.name) ? " ★" : "";
+    return `<option value="${escapeHtml(v.voiceURI)}">${escapeHtml(v.name)} (${escapeHtml(v.lang)})${tag}</option>`;
+  }).join("");
+  if (zhVoice) sel.value = zhVoice.voiceURI;
+}
+
+function speak(text) {
+  if (!("speechSynthesis" in window)) { toast("Audio not supported on this device"); return; }
+  if (!zhVoice) refreshVoices();
+  try { speechSynthesis.cancel(); } catch(_) {}
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = (zhVoice && zhVoice.lang) || "zh-CN";
+  if (zhVoice) u.voice = zhVoice;
+  u.rate = STATE.settings.rate || 0.85;
+  speechSynthesis.speak(u);
+}
+
+if ("speechSynthesis" in window) {
+  speechSynthesis.onvoiceschanged = refreshVoices;
+}
+
+/* =========================================================
+   UI helpers + screens
+   ========================================================= */
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+function show(name) {
+  ["home","study","done"].forEach(s => $("#" + s).classList.toggle("hidden", s !== name));
+  if (name === "home") setBack(false);
+}
+function setBack(on) { $("#backBtn").style.display = on ? "" : "none"; }
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function toast(msg, ms=1800) {
+  const el = $("#toast"); el.textContent = msg; el.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove("show"), ms);
+}
+
+function renderHome() {
+  $("#title").textContent = "HSK Study";
+  const grid = $("#levelGrid");
+  grid.innerHTML = "";
+  for (const lvl of LEVELS) {
+    const key = `lvl${lvl.id}`;
+    const p = STATE.progress[key] || { right: [], wrong: [] };
+    const known = new Set([...p.right, ...p.wrong]).size;
+    const total = lvl.id === 1 ? HSK1.length : (STATE.cache[lvl.id]?.length || lvl.count);
+    const pct = total ? Math.round((known / total) * 100) : 0;
+    const btn = document.createElement("button");
+    btn.className = "level-card";
+    btn.innerHTML = `
+      <div class="lc-main">
+        <div class="lc-title">${lvl.name}</div>
+        <div class="lc-sub">${lvl.desc}</div>
+      </div>
+      <div class="lc-right">
+        <div class="progress"><span style="width:${pct}%"></span></div>
+        <div class="lc-pct">${known} / ${total}${lvl.id !== 1 && !STATE.cache[lvl.id] ? " · downloads on first use" : ""}</div>
+      </div>
+    `;
+    btn.addEventListener("click", () => startSession(lvl.id));
+    grid.appendChild(btn);
+  }
+}
+
+/* Theme */
+function applyTheme() {
+  document.body.dataset.theme = STATE.settings.theme;
+  $("#optDark").checked = STATE.settings.theme === "dark";
+}
+/* Direction */
+function applyDirection() {
+  $$("#segDirection button").forEach(b => b.classList.toggle("on", b.dataset.val === STATE.settings.direction));
+}
+
+/* Settings UI bindings */
+function openSheet() { $("#sheet").classList.add("show"); $("#sheetBackdrop").classList.add("show"); }
+function closeSheet() { $("#sheet").classList.remove("show"); $("#sheetBackdrop").classList.remove("show"); }
+
+/* =========================================================
+   Hold-to-peek (mouse + touch)
+   Reveals the pinyin in the same position as the back of the card.
+   ========================================================= */
+function attachPeek() {
+  const card = $("#card");
+  let timer = null;
+  let peeking = false;
+  let startX = 0, startY = 0, moved = false;
+
+  function showPeek() {
+    if (STATE.settings.direction !== "cn") return; // only meaningful when showing hanzi front
+    if (!SESSION.cur || !SESSION.cur.word.p) return;
+    if (SESSION.flipped) return; // already revealed
+    card.classList.add("peeking");
+    peeking = true;
+  }
+  function hidePeek() {
+    card.classList.remove("peeking");
+    peeking = false;
+  }
+
+  card.addEventListener("pointerdown", (e) => {
+    moved = false; startX = e.clientX; startY = e.clientY;
+    timer = setTimeout(showPeek, 280);
+  });
+  card.addEventListener("pointermove", (e) => {
+    if (Math.abs(e.clientX - startX) > 8 || Math.abs(e.clientY - startY) > 8) {
+      moved = true; clearTimeout(timer); hidePeek();
+    }
+  });
+  card.addEventListener("pointerup", (e) => {
+    clearTimeout(timer);
+    const wasPeeking = peeking;
+    hidePeek();
+    if (!moved && !wasPeeking) flipCard(); // tap = flip; long-press release = no flip
+  });
+  card.addEventListener("pointercancel", () => { clearTimeout(timer); hidePeek(); });
+  card.addEventListener("pointerleave", () => { clearTimeout(timer); hidePeek(); });
+  card.addEventListener("contextmenu", (e) => e.preventDefault());
+}
+
+/* =========================================================
+   Wire it up
+   ========================================================= */
+function init() {
+  load();
+  applyTheme();
+  applyDirection();
+  $("#optShuffle").checked = STATE.settings.shuffle;
+  $("#optAutoAudio").checked = STATE.settings.autoAudio;
+  $("#rateInput").value = STATE.settings.rate;
+  $("#rateLabel").textContent = `${Number(STATE.settings.rate).toFixed(2)}×`;
+  renderHome();
+  attachPeek();
+  refreshVoices();
+
+  // Top bar
+  $("#backBtn").addEventListener("click", () => { renderHome(); show("home"); $("#title").textContent = "HSK Study"; });
+  $("#settingsBtn").addEventListener("click", openSheet);
+  $("#sheetBackdrop").addEventListener("click", closeSheet);
+
+  // Settings
+  $$("#segDirection button").forEach(b => b.addEventListener("click", () => {
+    STATE.settings.direction = b.dataset.val;
+    applyDirection(); save();
+    if (SESSION.cur) renderCard();
+  }));
+  $("#optShuffle").addEventListener("change", e => { STATE.settings.shuffle = e.target.checked; save(); });
+  $("#optAutoAudio").addEventListener("change", e => { STATE.settings.autoAudio = e.target.checked; save(); });
+  $("#optDark").addEventListener("change", e => { STATE.settings.theme = e.target.checked ? "dark" : "light"; applyTheme(); save(); });
+  $("#voiceSelect").addEventListener("change", e => {
+    STATE.settings.voiceURI = e.target.value;
+    zhVoice = zhVoices.find(v => v.voiceURI === e.target.value) || null;
+    save();
+    if (SESSION.cur) speak(SESSION.cur.word.h);
+  });
+  $("#rateInput").addEventListener("input", e => {
+    STATE.settings.rate = parseFloat(e.target.value);
+    $("#rateLabel").textContent = `${STATE.settings.rate.toFixed(2)}×`;
+    save();
+  });
+  $("#resetProgress").addEventListener("click", () => {
+    if (confirm("Reset progress for all levels? This cannot be undone.")) {
+      STATE.progress = {}; save(); renderHome(); toast("Progress reset");
+    }
+  });
+
+  // Study
+  $("#markRight").addEventListener("click", () => mark(true));
+  $("#markWrong").addEventListener("click", () => mark(false));
+  $("#flipBtn").addEventListener("click", flipCard);
+  $("#prevBtn").addEventListener("click", prevCard);
+  $("#nextBtn").addEventListener("click", nextCard);
+  $("#speakBtn").addEventListener("click", () => SESSION.cur && speak(SESSION.cur.word.h));
+  $("#endBtn").addEventListener("click", () => showDone());
+
+  // Done
+  $("#retryWrong").addEventListener("click", () => {
+    const wrong = getWrongIndexes();
+    if (!wrong.length) return;
+    startSession(SESSION.level, { onlyIndexes: wrong });
+  });
+  $("#restartLevel").addEventListener("click", () => startSession(SESSION.level));
+  $("#homeFromDone").addEventListener("click", () => { renderHome(); show("home"); $("#title").textContent = "HSK Study"; });
+
+  // Keyboard shortcuts:
+  //   ↑ = mark correct, ↓ = mark wrong
+  //   → = next card, ← = previous card
+  //   space = flip, / = audio
+  document.addEventListener("keydown", e => {
+    if ($("#study").classList.contains("hidden")) return;
+    // Don't intercept when typing in inputs
+    if (e.target.matches("input, textarea, select")) return;
+    if (e.key === " ") { e.preventDefault(); flipCard(); }
+    else if (e.key === "ArrowUp")    { e.preventDefault(); mark(true); }
+    else if (e.key === "ArrowDown")  { e.preventDefault(); mark(false); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); nextCard(); }
+    else if (e.key === "ArrowLeft")  { e.preventDefault(); prevCard(); }
+    else if (e.key === "/")          { e.preventDefault(); SESSION.cur && speak(SESSION.cur.word.h); }
+  });
+}
+
+document.addEventListener("DOMContentLoaded", init);
+</script>
+</body>
+</html>
