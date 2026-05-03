@@ -23,8 +23,8 @@
     --soft-blue: #6b8fc4;          /* English meaning */
     --good: #16a34a;
     --bad: #dc2626;
-    --good-soft: #86c79a;           /* softer mark buttons */
-    --bad-soft: #d99a9a;
+    --good-soft: #5cb377;           /* softer mark buttons (slightly more saturated) */
+    --bad-soft: #cd7878;
     --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
     --radius: 16px;
     --radius-sm: 10px;
@@ -41,8 +41,8 @@
     --soft-blue: #8aa9d6;
     --good: #22c55e;
     --bad: #ef4444;
-    --good-soft: #5fa074;
-    --bad-soft: #b87575;
+    --good-soft: #4ba868;
+    --bad-soft: #c26565;
     --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.4);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -105,7 +105,6 @@
     padding: 16px 18px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 14px;
     cursor: pointer;
     transition: transform .08s ease, box-shadow .15s ease, border-color .15s ease;
@@ -113,6 +112,13 @@
     font: inherit;
     color: inherit;
     width: 100%;
+  }
+  .level-card .lc-main { flex: 1; min-width: 0; }
+  .level-card .lc-end {
+    display: flex;
+    align-items: center;
+    gap: 15px;           /* fixed distance between progress bar and reset arrow */
+    flex: 0 0 auto;
   }
   .level-card:hover { box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
   .level-card:active { transform: scale(.99); }
@@ -202,16 +208,38 @@
     /* Allow our JS to handle horizontal swipes; vertical pan still goes to OS. */
     touch-action: pan-y;
   }
-  /* Default: no text selection or iOS callout (so hold-to-peek doesn't highlight).
-     When the back is revealed (.flipped), allow normal text selection for copy/paste. */
-  .card { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  /* iOS long-press suppression for hold-to-peek.
+     The text inside the card has pointer-events: none AND user-select: none
+     when not flipped. iOS can't initiate selection/Look Up/haptic on
+     content it can't "touch", so peek runs cleanly. Events still bubble to
+     the card div so tap/swipe/peek handlers all keep working.
+     When the card is flipped, full pointer-events and selection are restored
+     so the user can drag-select and copy text from the back. */
+  .card,
+  .card * {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+  }
+  .card .prompt,
+  .card .reveal-zone,
+  .card .reveal-zone * {
+    pointer-events: none;
+  }
   .card.flipped .prompt,
-  .card.flipped .reveal-zone {
+  .card.flipped .prompt *,
+  .card.flipped .reveal-zone,
+  .card.flipped .reveal-zone * {
     user-select: text;
     -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
     -webkit-touch-callout: default;
+    pointer-events: auto;
   }
-  .card .tap-hint { user-select: none; -webkit-user-select: none; }
   .prompt-zone {
     width: 100%;
     display: flex;
@@ -282,6 +310,9 @@
     grid-template-columns: 1fr 1fr;
     gap: 10px;
     padding: 8px 0 4px;
+    max-width: 480px;       /* match card max-width */
+    width: 100%;
+    margin: 0 auto;
   }
   .actions button {
     padding: 16px;
@@ -298,7 +329,7 @@
   .btn-good { background: var(--good-soft); }
   .actions button:active { transform: translateY(1px); filter: brightness(.95); }
 
-  .secondary-row { display: flex; gap: 8px; justify-content: center; padding-top: 10px; flex-wrap: wrap; }
+  .secondary-row { display: flex; gap: 8px; justify-content: center; padding-top: 10px; flex-wrap: wrap; max-width: 480px; width: 100%; margin: 0 auto; }
   .pill {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -339,26 +370,32 @@
 
   .footer-note { color: var(--text-dim); font-size: 12px; text-align: center; padding: 18px 0 6px; }
 
-  /* Reset button on each level card */
+  /* Reset button on each level card. Always present so card layout is
+     identical across decks. Dimmed/non-interactive when there's no progress. */
   .level-card .lc-reset {
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-dim);
     border-radius: 99px;
-    width: 30px;
-    height: 30px;
+    width: 22px;
+    height: 22px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font: inherit;
-    font-size: 14px;
+    font-size: 11px;
     cursor: pointer;
-    margin-left: 10px;
     flex: 0 0 auto;
     line-height: 1;
+    padding: 0;
   }
   .level-card .lc-reset:hover { color: var(--bad); border-color: var(--bad-soft); }
   .level-card .lc-reset:active { transform: scale(.92); }
+  .level-card .lc-reset:disabled {
+    opacity: .35;
+    cursor: default;
+    pointer-events: none;
+  }
 
   /* Phone: bump hanzi font ~4-5pt for legibility */
   @media (max-width: 480px) {
@@ -1061,19 +1098,19 @@ function renderHome() {
     const pct = total ? Math.round((known / total) * 100) : 0;
     const btn = document.createElement("button");
     btn.className = "level-card";
-    const resetHtml = known > 0
-      ? `<button class="lc-reset" data-level="${lvl.id}" title="Reset progress for ${lvl.name}" aria-label="Reset progress for ${lvl.name}">↺</button>`
-      : ``;
+    const disabledAttr = known > 0 ? "" : "disabled";
     btn.innerHTML = `
       <div class="lc-main">
         <div class="lc-title">${lvl.name}</div>
         <div class="lc-sub">${lvl.desc}</div>
       </div>
-      <div class="lc-right">
-        <div class="progress"><span style="width:${pct}%"></span></div>
-        <div class="lc-pct">${known} / ${total}${lvl.id !== 1 && !STATE.cache[lvl.id] ? " · downloads on first use" : ""}</div>
+      <div class="lc-end">
+        <div class="lc-right">
+          <div class="progress"><span style="width:${pct}%"></span></div>
+          <div class="lc-pct">${known} / ${total}${lvl.id !== 1 && !STATE.cache[lvl.id] ? " · downloads on first use" : ""}</div>
+        </div>
+        <button class="lc-reset" data-level="${lvl.id}" ${disabledAttr} title="Reset progress for ${lvl.name}" aria-label="Reset progress for ${lvl.name}">↺</button>
       </div>
-      ${resetHtml}
     `;
     btn.addEventListener("click", (e) => {
       // Don't start a session if the user tapped the reset button on this card
@@ -1081,7 +1118,7 @@ function renderHome() {
       startSession(lvl.id);
     });
     const resetBtn = btn.querySelector(".lc-reset");
-    if (resetBtn) {
+    if (resetBtn && known > 0) {
       resetBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         resetLevel(lvl.id, lvl.name);
@@ -1172,6 +1209,11 @@ function attachPeek() {
   card.addEventListener("pointercancel", () => { clearTimeout(timer); hidePeek(); });
   card.addEventListener("pointerleave", () => { clearTimeout(timer); hidePeek(); });
   card.addEventListener("contextmenu", (e) => e.preventDefault());
+  // Safety nets: prevent iOS-style selection/drag from initiating while not flipped
+  card.addEventListener("selectstart", (e) => {
+    if (!card.classList.contains("flipped")) e.preventDefault();
+  });
+  card.addEventListener("dragstart", (e) => e.preventDefault());
 }
 
 /* Tap on the empty space to the LEFT/RIGHT of the card to navigate.
