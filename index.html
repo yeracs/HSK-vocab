@@ -553,6 +553,17 @@
   </div>
   <div class="row">
     <div>
+      <div class="label">Backup &amp; sync</div>
+      <div class="hint">Export your progress to a file, then import it on another device.</div>
+    </div>
+    <div style="display:flex; gap:6px">
+      <button class="pill" id="exportBtn">Export</button>
+      <button class="pill" id="importBtn">Import</button>
+      <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+    </div>
+  </div>
+  <div class="row">
+    <div>
       <div class="label">Reset all progress</div>
       <div class="hint">Clear right/wrong piles for every level. Use the ↺ on a level card to reset just that level.</div>
     </div>
@@ -1351,6 +1362,62 @@ function resetLevel(id, name) {
   toast(`${name} progress cleared`);
 }
 
+/* =========================================================
+   Backup: export/import progress as JSON
+   ========================================================= */
+function exportProgress() {
+  const payload = {
+    app: "hsk-study",
+    schema: 1,
+    exportedAt: new Date().toISOString(),
+    settings: STATE.settings,
+    progress: STATE.progress,
+    history: STATE.history || {}
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `hsk-study-progress-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  toast("Exported progress");
+}
+
+async function importProgress(file) {
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data || typeof data !== "object") throw new Error("Not a valid backup file.");
+    if (!data.progress && !data.settings && !data.history) {
+      throw new Error("This file doesn't look like an HSK Study backup.");
+    }
+    const at = data.exportedAt ? new Date(data.exportedAt).toLocaleString() : "an unknown date";
+    if (!confirm(`Replace your current progress, settings, and history with the backup from ${at}? This cannot be undone.`)) return;
+    if (data.settings) Object.assign(STATE.settings, data.settings);
+    if (data.progress) STATE.progress = data.progress;
+    if (data.history)  STATE.history  = data.history;
+    save();
+
+    // Refresh visible UI to reflect the new state
+    applyTheme();
+    applyDirection();
+    $("#optShuffle").checked    = STATE.settings.shuffle;
+    $("#optAutoAudio").checked  = STATE.settings.autoAudio;
+    $("#rateInput").value       = STATE.settings.rate;
+    $("#rateLabel").textContent = `${Number(STATE.settings.rate).toFixed(2)}×`;
+    refreshVoices();
+    renderHome();
+    closeSheet();
+    toast("Backup imported");
+  } catch (e) {
+    alert("Couldn't import: " + (e && e.message ? e.message : e));
+  }
+}
+
 /* Theme */
 function applyTheme() {
   document.body.dataset.theme = STATE.settings.theme;
@@ -1492,6 +1559,13 @@ function init() {
     if (confirm("Reset progress for all levels? This cannot be undone.")) {
       STATE.progress = {}; save(); renderHome(); toast("Progress reset");
     }
+  });
+  $("#exportBtn").addEventListener("click", exportProgress);
+  $("#importBtn").addEventListener("click", () => $("#importFile").click());
+  $("#importFile").addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) importProgress(file);
+    e.target.value = "";   // allow re-selecting the same file later
   });
 
   // Study
