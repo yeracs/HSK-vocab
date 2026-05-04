@@ -716,6 +716,7 @@ const CDN_SOURCES = (level) => [
    State + storage
    ========================================================= */
 const LS_KEY = "hsk-study-v1";
+const CACHE_VERSION = 2;       // bump to invalidate cached vocab from older parsers
 const STATE = {
   settings: {
     theme: "light",
@@ -738,12 +739,18 @@ function load() {
     const obj = JSON.parse(raw);
     if (obj.settings) Object.assign(STATE.settings, obj.settings);
     if (obj.progress) STATE.progress = obj.progress;
-    if (obj.cache)    STATE.cache    = obj.cache;
+    // Only restore cache if it was saved by a parser of the same version.
+    // Older versions saved garbled HSK 2-6 entries — we want to refetch.
+    if (obj.cache && obj.cacheVersion === CACHE_VERSION) {
+      STATE.cache = obj.cache;
+    }
   } catch(e){ console.warn("load failed", e); }
 }
 function save() {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(STATE)); }
-  catch(e){ console.warn("save failed", e); }
+  try {
+    const payload = { ...STATE, cacheVersion: CACHE_VERSION };
+    localStorage.setItem(LS_KEY, JSON.stringify(payload));
+  } catch(e){ console.warn("save failed", e); }
 }
 
 /* =========================================================
@@ -776,19 +783,58 @@ function parseAny(text) {
   // Try JSON first
   try {
     const data = JSON.parse(text);
-    if (Array.isArray(data)) return data.map(normalizeEntry).filter(Boolean);
-  } catch(_) {}
-  // Plain text fallback (one entry per line, tab/space separated)
-  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+    if (Array.isArray(data)) {
+      const items = data.map(normalizeEntry).filter(Boolean);
+      if (items.length) return items;
+    }
+  } catch (_) {}
+
+  // Plain text fallback. The hskhsk.com source uses 5 tab-separated cols:
+  //   simplified \t traditional \t numericPinyin \t accentedPinyin \t english
+  // Other sources may use 3 or 4. Detect by column count and field shape.
+  const hasDiacritics = (s) =>
+    !!s && /[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜüĀÁǍÀĒÉĚÈĪÍǏÌŌÓǑÒŪÚǓÙǕǗǙǛÜ]/.test(s);
+  const looksLikeEnglish = (s) =>
+    !!s && /[a-zA-Z]/.test(s) && !hasDiacritics(s) && !/[一-鿿]/.test(s);
+
+  const lines = text.split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith("#") && !l.startsWith("//"));
+
   const out = [];
   for (const line of lines) {
-    // Common formats: hanzi\tpinyin\tdefinition  OR  hanzi pinyin definition
-    const parts = line.split(/\t+|\s{2,}|\s\/\s|;\s/);
-    if (parts.length >= 3) {
-      out.push({ h: parts[0], p: parts[1], e: parts.slice(2).join("; ") });
-    } else if (parts.length === 2) {
-      out.push({ h: parts[0], p: "", e: parts[1] });
+    // Prefer tabs; fall back to runs of 2+ spaces if no tab present
+    let parts = line.split(/\t+/);
+    if (parts.length === 1) parts = line.split(/\s{2,}/);
+    parts = parts.map(p => p.trim()).filter(Boolean);
+    if (parts.length < 2) continue;
+
+    const h = parts[0];
+    let p = "", e = "";
+
+    if (parts.length >= 5) {
+      // simplified, traditional, numericPinyin, accentedPinyin, english[, ...]
+      p = hasDiacritics(parts[3]) ? parts[3] : parts[2];
+      e = parts.slice(4).join("; ");
+    } else if (parts.length === 4) {
+      // Could be: simp, trad, pinyin, english  OR  simp, pinyin, numericPinyin, english
+      // Pick the part that looks like accented pinyin
+      if (hasDiacritics(parts[2])) { p = parts[2]; e = parts[3]; }
+      else if (hasDiacritics(parts[1])) { p = parts[1]; e = parts[3] || parts[2]; }
+      else { p = parts[2]; e = parts[3]; }
+    } else if (parts.length === 3) {
+      // simp, pinyin, english
+      p = parts[1];
+      e = parts[2];
+    } else {
+      // simp, english (no pinyin available)
+      e = parts[1];
     }
+
+    // Final tidy: collapse repeated separators in english
+    e = e.replace(/\s*;\s*/g, "; ").replace(/^;\s*|;\s*$/g, "");
+
+    if (h) out.push({ h, p, e, s: "" });
   }
   return out;
 }
