@@ -458,15 +458,18 @@
   <!-- Done screen -->
   <section id="done" class="screen hidden">
     <div class="done">
-      <h2 style="margin:0">Session complete</h2>
+      <h2 id="doneTitle" style="margin:0">Session complete</h2>
+      <p id="doneSubtitle" style="margin:0; color:var(--text-dim); font-size:14px; text-align:center"></p>
       <div class="stat-row">
-        <div class="stat"><div class="num" id="rightNum" style="color:var(--good)">0</div><div class="lbl">Right</div></div>
-        <div class="stat"><div class="num" id="wrongNum" style="color:var(--bad)">0</div><div class="lbl">Wrong</div></div>
+        <div class="stat"><div class="num" id="rightNum" style="color:var(--good-soft)">0</div><div class="lbl">Right</div></div>
+        <div class="stat"><div class="num" id="wrongNum" style="color:var(--bad-soft)">0</div><div class="lbl">Wrong</div></div>
+        <div class="stat"><div class="num" id="leftNum" style="color:var(--text-dim)">0</div><div class="lbl">To go</div></div>
       </div>
       <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center">
-        <button class="btn-primary" id="retryWrong">Retry wrong pile</button>
-        <button class="btn-ghost" id="restartLevel">Restart level</button>
-        <button class="btn-ghost" id="homeFromDone">Back to levels</button>
+        <button class="btn-primary" id="continueBtn">Continue studying</button>
+        <button class="btn-ghost"   id="retryWrong">Retry wrong pile</button>
+        <button class="btn-ghost"   id="restartLevel">Restart deck</button>
+        <button class="btn-ghost"   id="homeFromDone">Back to levels</button>
       </div>
     </div>
   </section>
@@ -906,21 +909,53 @@ async function startSession(level, opts = {}) {
     return;
   }
 
+  // Always seed session marks from persistent progress so tallies
+  // and "is this card already studied" checks reflect lifetime state.
+  const lifetime = STATE.progress[`lvl${level}`] || { right: [], wrong: [] };
+  const seedMarks = {};
+  for (const i of lifetime.right) seedMarks[i] = "right";
+  for (const i of lifetime.wrong) seedMarks[i] = "wrong";
+
   let indexes;
   if (opts.onlyIndexes) {
+    // Specific list (e.g., retry wrong pile) — show exactly these
     indexes = opts.onlyIndexes.slice();
-  } else {
+  } else if (opts.includeAll) {
+    // Review all cards (used by Restart deck)
     indexes = words.map((_, i) => i);
+  } else {
+    // DEFAULT: continue with cards you haven't marked yet
+    indexes = words.map((_, i) => i).filter(i => !seedMarks[i]);
   }
-  if (STATE.settings.shuffle) indexes = shuffle(indexes);
 
   SESSION.level = level;
   SESSION.words = words;
-  SESSION.queue = indexes;
-  SESSION.pos = 0;
-  SESSION.marks = {};
   SESSION.flipped = false;
-  goToCard(0);
+  SESSION.marks = seedMarks;
+
+  // Nothing left to study (and not an explicit retry) → go straight to done
+  if (!indexes.length && !opts.onlyIndexes) {
+    SESSION.queue = [];
+    SESSION.pos = 0;
+    showDone();
+    return;
+  }
+
+  if (STATE.settings.shuffle) indexes = shuffle(indexes);
+  SESSION.queue = indexes;
+
+  // Resume on the last card the user saw, if it's still in the queue.
+  // Skip resume on retry-wrong-pile sessions or full restarts.
+  let startPos = 0;
+  if (!opts.onlyIndexes && !opts.includeAll) {
+    const lastIdx = lifetime.lastIdx;
+    if (lastIdx !== undefined) {
+      const at = indexes.indexOf(lastIdx);
+      if (at >= 0) startPos = at;
+    }
+  }
+  SESSION.pos = startPos;
+  goToCard(startPos);
 }
 
 function goToCard(pos) {
@@ -931,6 +966,11 @@ function goToCard(pos) {
   const idx = SESSION.queue[pos];
   SESSION.cur = { idx, word: SESSION.words[idx] };
   SESSION.flipped = false;
+  // Persist resume position for this level
+  const key = `lvl${SESSION.level}`;
+  STATE.progress[key] = STATE.progress[key] || { right: [], wrong: [] };
+  STATE.progress[key].lastIdx = idx;
+  save();
   renderCard();
   if (STATE.settings.autoAudio && STATE.settings.direction === "cn") {
     setTimeout(() => speak(SESSION.cur.word.h), 200);
@@ -981,12 +1021,12 @@ function renderCard() {
   }
   $("#revealZone").innerHTML = revealHTML;
 
-  // Header info
-  const total = SESSION.queue.length;
-  const done = countMarks().total;
-  $("#studyMeta").textContent = `${SESSION.pos + 1} / ${total}`;
+  // Header info — lifetime progress for this level (matches the home screen)
+  const total = SESSION.words.length;
   const c = countMarks();
-  $("#studyTallies").innerHTML = `<span style="color:var(--good-soft)">✓ ${c.right}</span> · <span style="color:var(--bad-soft)">✗ ${c.wrong}</span>${done < total ? ` · <span style="color:var(--text-dim)">${total - done} left</span>` : ``}`;
+  const remaining = Math.max(0, total - c.total);
+  $("#studyMeta").textContent = `${c.total} / ${total}`;
+  $("#studyTallies").innerHTML = `<span style="color:var(--good-soft)">✓ ${c.right}</span> · <span style="color:var(--bad-soft)">✗ ${c.wrong}</span>${remaining > 0 ? ` · <span style="color:var(--text-dim)">${remaining} to go</span>` : ``}`;
   $("#tapHint").textContent = (dir === "cn") ? "Tap to flip · Hold for pinyin" : "Tap to flip";
 }
 
@@ -1009,36 +1049,60 @@ function mark(correct) {
   if (!SESSION.cur) return;
   const idx = SESSION.cur.idx;
   SESSION.marks[idx] = correct ? "right" : "wrong";
-  // Persist
+  // Persist to lifetime progress
   const key = `lvl${SESSION.level}`;
   const p = STATE.progress[key] || (STATE.progress[key] = { right: [], wrong: [] });
   p.right = p.right.filter(i => i !== idx);
   p.wrong = p.wrong.filter(i => i !== idx);
   (correct ? p.right : p.wrong).push(idx);
+
+  // Per-card lifetime stats: cumulative right/wrong counts per word
+  p.cards = p.cards || {};
+  const stats = p.cards[idx] = p.cards[idx] || { r: 0, w: 0, lastAt: 0 };
+  if (correct) stats.r++; else stats.w++;
+  stats.lastAt = Date.now();
+
+  // Per-day activity log: counts per level per local date
+  const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
+  STATE.history = STATE.history || {};
+  const day = STATE.history[today] = STATE.history[today] || {};
+  const lvlDay = day[key] = day[key] || { r: 0, w: 0 };
+  if (correct) lvlDay.r++; else lvlDay.w++;
+
   save();
-  // If everything is marked, finish; otherwise advance
-  if (countMarks().total >= SESSION.queue.length) {
-    showDone();
-  } else {
-    // Find next unmarked card after current position; wrap if needed
-    let next = SESSION.pos + 1;
+  // Find next card in queue that hasn't been marked (in this session OR ever)
+  let next = SESSION.pos + 1;
+  while (next < SESSION.queue.length && SESSION.marks[SESSION.queue[next]]) next++;
+  if (next >= SESSION.queue.length) {
+    next = 0;
     while (next < SESSION.queue.length && SESSION.marks[SESSION.queue[next]]) next++;
-    if (next >= SESSION.queue.length) {
-      // wrap to first unmarked
-      next = 0;
-      while (next < SESSION.queue.length && SESSION.marks[SESSION.queue[next]]) next++;
-    }
-    if (next < SESSION.queue.length) goToCard(next);
-    else showDone();
   }
+  if (next < SESSION.queue.length) goToCard(next);
+  else showDone();
 }
 
 function showDone() {
   show("done"); setBack(true);
-  $("#title").textContent = `HSK ${SESSION.level} — done`;
   const c = countMarks();
+  const total = SESSION.words.length;
+  const remaining = Math.max(0, total - c.total);
+  $("#title").textContent = `HSK ${SESSION.level}`;
+
+  if (remaining === 0) {
+    $("#doneTitle").textContent = `HSK ${SESSION.level} complete!`;
+    $("#doneSubtitle").textContent = `You've gone through all ${total} cards.`;
+  } else {
+    $("#doneTitle").textContent = "Session paused";
+    $("#doneSubtitle").textContent = `${c.total} of ${total} studied. ${remaining} cards left in this deck.`;
+  }
   $("#rightNum").textContent = c.right;
   $("#wrongNum").textContent = c.wrong;
+  $("#leftNum").textContent  = remaining;
+
+  // Continue is only useful when there's still unstudied material
+  const cont = $("#continueBtn");
+  cont.style.display = remaining > 0 ? "" : "none";
+
   $("#retryWrong").disabled = c.wrong === 0;
   $("#retryWrong").style.opacity = c.wrong === 0 ? 0.4 : 1;
 }
@@ -1335,12 +1399,18 @@ function init() {
   $("#endBtn").addEventListener("click", () => showDone());
 
   // Done
+  $("#continueBtn").addEventListener("click", () => startSession(SESSION.level));
   $("#retryWrong").addEventListener("click", () => {
     const wrong = getWrongIndexes();
     if (!wrong.length) return;
     startSession(SESSION.level, { onlyIndexes: wrong });
   });
-  $("#restartLevel").addEventListener("click", () => startSession(SESSION.level));
+  $("#restartLevel").addEventListener("click", () => {
+    if (!confirm(`Restart HSK ${SESSION.level} from scratch? This will clear your right/wrong tallies for this deck.`)) return;
+    delete STATE.progress[`lvl${SESSION.level}`];
+    save();
+    startSession(SESSION.level);
+  });
   $("#homeFromDone").addEventListener("click", () => { renderHome(); show("home"); $("#title").textContent = "HSK Study"; });
 
   // Keyboard shortcuts:
