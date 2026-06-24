@@ -1569,6 +1569,8 @@ function ensureSilentAudio() {
   const a = document.createElement("audio");
   a.loop = true;
   a.preload = "auto";
+  a.setAttribute("playsinline", "");
+  a.playsInline = true;
   // Longer loop body is more reliable on iOS than tight 1-second loops.
   a.src = makeSilentAudio(10);
   a.style.display = "none";
@@ -1660,7 +1662,10 @@ function setDriveStatus(text) {
    phone speaker / AirPods (device fallback). */
 function driveEngineLabel(text) {
   if (TTS_ENGINE === "web")    return "🌐 web TTS · " + text;
-  if (TTS_ENGINE === "device") return "📱 device voice (no CarPlay) · " + text;
+  if (TTS_ENGINE === "device") {
+    const errSuffix = TTS_LAST_ERROR ? ` [${TTS_LAST_ERROR}]` : "";
+    return "📱 device voice (no CarPlay)" + errSuffix + " · " + text;
+  }
   return text;
 }
 
@@ -1678,19 +1683,40 @@ function drivingShowMeaning(show) {
    We keep speechSynthesis as a fallback for when the network is unreliable. */
 let TTS_AUDIO = null;
 let TTS_ENGINE = "?";          // "web" | "device" — last engine used (for status banner)
+let TTS_LAST_ERROR = "";       // last failure reason; surfaced in the drive status banner
 function ensureTtsAudio() {
   if (TTS_AUDIO) return TTS_AUDIO;
   const a = document.createElement("audio");
   a.preload = "auto";
+  // iOS Safari requires playsinline for inline (non-fullscreen) playback.
+  a.setAttribute("playsinline", "");
+  a.playsInline = true;
   // IMPORTANT: do NOT set crossOrigin. Google's TTS endpoint doesn't send
-  // CORS headers, so setting crossOrigin="anonymous" makes every load fail
-  // and silently fall through to speechSynthesis (which doesn't route to
-  // CarPlay). Treating the audio as opaque media is what we want — the
-  // <audio> element will play it cross-origin without needing CORS.
+  // CORS headers, so setting crossOrigin="anonymous" makes every load fail.
+  // For StreamElements (which does send CORS) it would also work without it.
   a.style.display = "none";
   document.body.appendChild(a);
   TTS_AUDIO = a;
   return a;
+}
+
+/* iOS Safari demands a user gesture for the FIRST .play() on every distinct
+   <audio> element. Our TTS element's first play happens inside the async
+   drivingPlayCurrent flow, AFTER the original "Drive" tap has expired its
+   activation window — so iOS rejects it and falls back. Workaround: during
+   the tap itself we briefly play+pause the TTS element with a silent source.
+   After that primer, all subsequent programmatic play() calls are allowed. */
+async function primeTtsAudio() {
+  const a = ensureTtsAudio();
+  try {
+    a.src = makeSilentAudio(0.05);     // 50ms of silence is enough to "unlock"
+    a.volume = 1.0;
+    await a.play();
+    a.pause();
+    a.currentTime = 0;
+  } catch (e) {
+    console.warn("[HSK] TTS primer failed:", e && e.message ? e.message : e);
+  }
 }
 
 /* Build a TTS URL for the given text + language.
@@ -1720,11 +1746,13 @@ function speakViaAudio(text, lang, opts = {}) {
         // Network/CORS failed — fall back to speechSynthesis so the user
         // at least hears something (won't route to CarPlay, but better than silence).
         TTS_ENGINE = "device";
+        TTS_LAST_ERROR = reason;
         console.warn("[HSK] Web TTS failed (" + reason + ") — falling back to device speechSynthesis. Audio will NOT route to CarPlay.");
         const fn = lang.startsWith("zh") ? speak : speakEnglish;
         fn(text, { onend: resolve, onerror: resolve });
       } else {
         TTS_ENGINE = "web";
+        TTS_LAST_ERROR = "";
         resolve();
       }
     };
@@ -1823,6 +1851,9 @@ async function startDriving() {
   $("#driveBtn").textContent = "🚗 Stop";
 
   // Start silent audio so Media Session attaches (lock screen / CarPlay)
+  // AND prime the TTS audio element so its first .play() doesn't get blocked
+  // by iOS Safari's per-element user-gesture requirement. Both happen here
+  // synchronously inside the Drive-tap activation window.
   try {
     const a = ensureSilentAudio();
     a.muted = false;
@@ -1834,6 +1865,7 @@ async function startDriving() {
     // Autoplay blocked — user gesture (the Drive tap) should normally allow it
     console.warn("silent audio play blocked", e);
   }
+  await primeTtsAudio();
   setupMediaSession();
   updateMediaSessionMetadata();
 
