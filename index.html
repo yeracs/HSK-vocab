@@ -622,6 +622,7 @@
     </div>
     <div class="drive-status" id="driveStatus">
       <div id="driveStatusText">—</div>
+      <div id="driveDiagText" style="font-size:11px; margin-top:4px; opacity:.85"></div>
       <div class="legend">
         <span><kbd>⏭</kbd> mark right</span>
         <span><kbd>⏮</kbd> mark wrong</span>
@@ -1655,11 +1656,28 @@ function hanziArtwork(h) {
 function setDriveStatus(text) {
   const el = $("#driveStatusText");
   if (el) el.textContent = text;
+  refreshDriveDiag();
 }
 
-/* Prefix the status banner with which TTS engine just played, so the user
-   can confirm at a glance whether audio is going to CarPlay (web) or the
-   phone speaker / AirPods (device fallback). */
+/* Persistent diagnostic line under the main status. Always shows which TTS
+   engine is active and the most recent failure reason (if any), regardless
+   of which phase of the drive loop is currently displayed. */
+function refreshDriveDiag() {
+  const el = $("#driveDiagText");
+  if (!el) return;
+  let s = "";
+  if (TTS_ENGINE === "web")    s = "🌐 web TTS active (CarPlay-capable)";
+  else if (TTS_ENGINE === "device") {
+    s = "📱 device voice (no CarPlay)";
+    if (TTS_LAST_ERROR) s += " · last error: " + TTS_LAST_ERROR;
+  } else {
+    s = "audio engine: pending…";
+  }
+  el.textContent = s;
+}
+
+/* Older inline prefix — kept for the "Speaking…" / "Meaning…" lines so they
+   still call out the engine even before the diag line has been refreshed. */
 function driveEngineLabel(text) {
   if (TTS_ENGINE === "web")    return "🌐 web TTS · " + text;
   if (TTS_ENGINE === "device") {
