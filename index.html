@@ -659,6 +659,16 @@
   <h3>Settings</h3>
   <div class="row">
     <div>
+      <div class="label">HSK standard</div>
+      <div class="hint">2.0 = 2010 (legacy) · 3.0 = 2021 (current)</div>
+    </div>
+    <div class="seg" id="segHskStandard">
+      <button data-val="2.0" class="on">2.0</button>
+      <button data-val="3.0">3.0</button>
+    </div>
+  </div>
+  <div class="row">
+    <div>
       <div class="label">Show me</div>
       <div class="hint">What appears on the front of the card</div>
     </div>
@@ -905,20 +915,31 @@ const HSK1 = [
   {h:"坐",p:"zuò",e:"to sit",s:"请坐。 — Qǐng zuò. — Please sit."}
 ];
 
-/* HSK levels metadata. Higher levels are fetched at runtime. */
-const LEVELS = [
-  { id: 1, name: "HSK 1", desc: "150 words · beginner", count: HSK1.length },
-  { id: 2, name: "HSK 2", desc: "300 words · elementary", count: 300 },
-  { id: 3, name: "HSK 3", desc: "600 words · intermediate basic", count: 600 },
-  { id: 4, name: "HSK 4", desc: "1200 words · intermediate", count: 1200 },
-  { id: 5, name: "HSK 5", desc: "2500 words · advanced", count: 2500 },
-  { id: 6, name: "HSK 6", desc: "5000 words · proficient", count: 5000 }
+/* HSK levels metadata, per standard. Higher levels are fetched at runtime.
+   The active set (LEVELS / CUMULATIVE) is reassigned in applyStandard()
+   based on STATE.settings.hskStandard. Counts for HSK 2.0 are the official
+   2010 cumulative totals; counts for HSK 3.0 follow the 2021 standard. */
+const LEVELS_V2 = [
+  { id: 1, name: "HSK 1", desc: "150 words · beginner",         count: HSK1.length },
+  { id: 2, name: "HSK 2", desc: "300 words · elementary",       count: 300 },
+  { id: 3, name: "HSK 3", desc: "600 words · intermediate",     count: 600 },
+  { id: 4, name: "HSK 4", desc: "1200 words · intermediate",    count: 1200 },
+  { id: 5, name: "HSK 5", desc: "2500 words · advanced",        count: 2500 },
+  { id: 6, name: "HSK 6", desc: "5000 words · proficient",      count: 5000 }
+];
+const LEVELS_V3 = [
+  { id: 1, name: "HSK 1",   desc: "300 words · beginner",       count: 300 },
+  { id: 2, name: "HSK 2",   desc: "500 words · elementary",     count: 500 },
+  { id: 3, name: "HSK 3",   desc: "900 words · pre-intermediate", count: 900 },
+  { id: 4, name: "HSK 4",   desc: "1200 words · intermediate",  count: 1200 },
+  { id: 5, name: "HSK 5",   desc: "2500 words · upper-intermediate", count: 2500 },
+  { id: 6, name: "HSK 6",   desc: "3000 words · advanced",      count: 3000 },
+  { id: 7, name: "HSK 7–9", desc: "~11000 words · proficient",  count: 11000 }
 ];
 
-/* Cumulative decks: each one mixes all levels up to N. Useful for review
-   sessions that span everything you've learned so far. Progress is tracked
-   independently from the standalone levels (key: `lvlc<N>`). */
-const CUMULATIVE = [
+/* Cumulative decks: each one mixes all levels up to N. Progress is tracked
+   independently from the standalone levels (key: `lvlc<N>` or `lvlc<N>_v3`). */
+const CUMULATIVE_V2 = [
   { id: "c1", name: "HSK 1",   desc: "150 words",        levels: [1] },
   { id: "c2", name: "HSK 1–2", desc: "~450 words",       levels: [1, 2] },
   { id: "c3", name: "HSK 1–3", desc: "~1050 words",      levels: [1, 2, 3] },
@@ -926,6 +947,19 @@ const CUMULATIVE = [
   { id: "c5", name: "HSK 1–5", desc: "~4750 words",      levels: [1, 2, 3, 4, 5] },
   { id: "c6", name: "HSK 1–6", desc: "~9750 words",      levels: [1, 2, 3, 4, 5, 6] }
 ];
+const CUMULATIVE_V3 = [
+  { id: "c1", name: "HSK 1",     desc: "300 words",          levels: [1] },
+  { id: "c2", name: "HSK 1–2",   desc: "~800 words",         levels: [1, 2] },
+  { id: "c3", name: "HSK 1–3",   desc: "~1700 words",        levels: [1, 2, 3] },
+  { id: "c4", name: "HSK 1–4",   desc: "~2900 words",        levels: [1, 2, 3, 4] },
+  { id: "c5", name: "HSK 1–5",   desc: "~5400 words",        levels: [1, 2, 3, 4, 5] },
+  { id: "c6", name: "HSK 1–6",   desc: "~8400 words",        levels: [1, 2, 3, 4, 5, 6] },
+  { id: "c7", name: "HSK 1–7/9", desc: "~19000 words · all", levels: [1, 2, 3, 4, 5, 6, 7] }
+];
+
+/* Active sets — reassigned by applyStandard() when the user toggles HSK 2.0 ↔ 3.0. */
+let LEVELS = LEVELS_V2;
+let CUMULATIVE = CUMULATIVE_V2;
 
 /* Review pile: pseudo-deck that pulls every card you've ever marked wrong
    across all standard HSK levels. Lives on the cumulative page. Progress
@@ -940,9 +974,12 @@ const REVIEW_DECK = {
 /* Count of unique missed cards. Approximate — counts (level, index) pairs,
    which is fine because the HSK lists don't overlap meaningfully. */
 function reviewPileCount() {
+  // Only counts within the currently-active standard's levels. Switching to
+  // HSK 3.0 hides any HSK 2.0 wrong-pile counts (and vice versa) — each
+  // standard has its own self-contained review.
   let n = 0;
   for (const lvl of LEVELS) {
-    const p = STATE.progress[`lvl${lvl.id}`];
+    const p = STATE.progress[deckKey({ id: lvl.id })];
     if (!p || !p.cards) continue;
     for (const stat of Object.values(p.cards)) {
       if ((stat.w || 0) >= 1) n++;
@@ -958,11 +995,12 @@ function reviewPileCount() {
 async function getReviewPileWords() {
   const out = [];
   const seen = new Set();
+  const std = STATE.settings.hskStandard || "2.0";
   for (const lvl of LEVELS) {
-    const p = STATE.progress[`lvl${lvl.id}`];
+    const p = STATE.progress[deckKey({ id: lvl.id })];
     if (!p || !p.cards) continue;
     let words;
-    try { words = await getLevelWords(lvl.id); } catch (_) { continue; }
+    try { words = await getLevelWords(lvl.id, std); } catch (_) { continue; }
     for (const [idxStr, stat] of Object.entries(p.cards)) {
       if ((stat.w || 0) < 1) continue;
       const w = words[parseInt(idxStr, 10)];
@@ -973,25 +1011,40 @@ async function getReviewPileWords() {
 }
 
 /* Resolve any deck input (legacy level number, level object, or cumulative
-   object) to a canonical { id, name, levels } shape. */
+   object) to a canonical { id, name, levels, standard } shape. The `standard`
+   field carries which HSK list set this deck belongs to ("2.0" or "3.0"),
+   which both selects the CDN folder and namespaces progress storage. */
 function asDeck(input) {
+  const std = STATE.settings.hskStandard || "2.0";
   if (input && typeof input === "object") {
-    if (input.review) return input;                      // review pile
-    if (Array.isArray(input.levels)) return input;       // already a deck
-    if (input.id != null) return { id: input.id, name: input.name, levels: [input.id] };
+    // Review pile / already-shaped deck / cumulative deck — tag with the
+    // currently-active standard so each toggle gets its own progress bucket.
+    if (input.review)                return { ...input, standard: input.standard || std };
+    if (Array.isArray(input.levels)) return { ...input, standard: input.standard || std };
+    if (input.id != null)            return { id: input.id, name: input.name, levels: [input.id], standard: std };
   }
-  // Number → single-level deck
+  // Number → single-level deck under the active standard.
   const n = Number(input);
   const lvl = LEVELS.find(l => l.id === n);
-  return { id: n, name: lvl ? lvl.name : `HSK ${n}`, levels: [n] };
+  return { id: n, name: lvl ? lvl.name : `HSK ${n}`, levels: [n], standard: std };
+}
+
+/* Storage key for a deck's lifetime progress. HSK 2.0 uses the original
+   `lvl<id>` keys for backward compatibility with any existing user data;
+   HSK 3.0 gets a `_v3` suffix so the two standards never collide. */
+function deckKey(deck) {
+  const v = (deck && deck.standard) || STATE.settings.hskStandard || "2.0";
+  const suffix = v === "3.0" ? "_v3" : "";
+  return `lvl${deck.id}${suffix}`;
 }
 
 /* Combine word lists from the deck's underlying levels, dedup by hanzi,
    keep deterministic order (lower levels first). */
 async function getDeckWords(deck) {
   if (deck.review) return getReviewPileWords();
+  const standard = deck.standard || "2.0";
   const lists = [];
-  for (const lvl of deck.levels) lists.push(await getLevelWords(lvl));
+  for (const lvl of deck.levels) lists.push(await getLevelWords(lvl, standard));
   if (lists.length === 1) return lists[0];
   const seen = new Set();
   const merged = [];
@@ -1003,18 +1056,29 @@ async function getDeckWords(deck) {
   return merged;
 }
 
-/* CDN sources for HSK 2-6. We try them in order; first success wins.
-   The data is then cached in localStorage so future loads are instant and offline. */
-const CDN_SOURCES = (level) => [
-  `https://cdn.jsdelivr.net/gh/drkameleon/complete-hsk-vocabulary@main/wordlists/old/${level}.json`,
-  `https://cdn.jsdelivr.net/gh/glxxyz/hskhsk.com@master/data/lists/HSK%20Official%20With%20Definitions%202012%20L${level}.txt`
-];
+/* CDN sources for non-embedded levels. Tried in order; first success wins.
+   Result is cached in localStorage so future loads are instant and offline.
+   `standard` selects "2.0" (old) or "3.0" (new) in the drkameleon repo.
+   Note: the previous URL `wordlists/old/${level}.json` was 404'ing because the
+   repo restructured under `wordlists/inclusive/{new,old}/`. The glxxyz mirror
+   only has HSK 2.0 vocabulary (the 2012 official list), so we only fall back
+   to it when the user has HSK 2.0 selected. */
+const CDN_SOURCES = (level, standard = "2.0") => {
+  const folder = standard === "3.0" ? "new" : "old";
+  const sources = [
+    `https://cdn.jsdelivr.net/gh/drkameleon/complete-hsk-vocabulary@main/wordlists/inclusive/${folder}/${level}.json`
+  ];
+  if (standard === "2.0") {
+    sources.push(`https://cdn.jsdelivr.net/gh/glxxyz/hskhsk.com@master/data/lists/HSK%20Official%20With%20Definitions%202012%20L${level}.txt`);
+  }
+  return sources;
+};
 
 /* =========================================================
    State + storage
    ========================================================= */
 const LS_KEY = "hsk-study-v1";
-const CACHE_VERSION = 3;       // bump to invalidate cached vocab from older parsers
+const CACHE_VERSION = 4;       // bump to invalidate cached vocab from older parsers
 const STATE = {
   settings: {
     theme: "light",
@@ -1024,7 +1088,8 @@ const STATE = {
     voiceURI: "",      // chosen voice (persisted)
     rate: 0.85,
     drivingDisplay: "cn-pin",  // "cn" = hanzi only, "cn-pin" = hanzi + pinyin
-    drivingPause: 2.0          // seconds between speaking hanzi and meaning
+    drivingPause: 2.0,         // seconds between speaking hanzi and meaning
+    hskStandard: "2.0"         // "2.0" (2010 standard, default) or "3.0" (2021 standard)
   },
   // per-level: { right: [indexes], wrong: [indexes] }
   progress: {},
@@ -1056,8 +1121,10 @@ function save() {
 /* =========================================================
    Vocab loader
    ========================================================= */
-async function getLevelWords(level) {
-  if (level === 1) {
+async function getLevelWords(level, standard = "2.0") {
+  // HSK 1 in the 2.0 standard ships embedded so the app works fully offline.
+  // For HSK 3.0 (and HSK 7–9), we always download from the CDN.
+  if (level === 1 && standard === "2.0") {
     // Strip "Kangxi radical N" notes from the hard-coded HSK1 list once.
     if (!HSK1._cleaned) {
       for (const w of HSK1) w.e = cleanEnglish(w.e);
@@ -1065,10 +1132,11 @@ async function getLevelWords(level) {
     }
     return HSK1;
   }
-  if (STATE.cache[level] && Array.isArray(STATE.cache[level]) && STATE.cache[level].length) {
-    return STATE.cache[level];
+  const cacheKey = `${standard}-${level}`;
+  if (STATE.cache[cacheKey] && Array.isArray(STATE.cache[cacheKey]) && STATE.cache[cacheKey].length) {
+    return STATE.cache[cacheKey];
   }
-  const sources = CDN_SOURCES(level);
+  const sources = CDN_SOURCES(level, standard);
   let lastErr;
   for (const url of sources) {
     try {
@@ -1077,13 +1145,13 @@ async function getLevelWords(level) {
       const text = await res.text();
       let words = parseAny(text);
       if (words && words.length) {
-        STATE.cache[level] = words;
+        STATE.cache[cacheKey] = words;
         save();
         return words;
       }
     } catch (e) { lastErr = e; }
   }
-  throw lastErr || new Error("Could not load HSK " + level);
+  throw lastErr || new Error("Could not load HSK " + level + " (" + standard + ")");
 }
 
 /* Strip "Kangxi radical N" annotations from a definition string. These are
@@ -1238,7 +1306,7 @@ async function startSession(deckOrLevel, opts = {}) {
 
   // Always seed session marks from persistent progress so tallies
   // and "is this card already studied" checks reflect lifetime state.
-  const lifetime = STATE.progress[`lvl${deck.id}`] || { right: [], wrong: [] };
+  const lifetime = STATE.progress[deckKey(deck)] || { right: [], wrong: [] };
   const seedMarks = {};
   for (const i of lifetime.right) seedMarks[i] = "right";
   for (const i of lifetime.wrong) seedMarks[i] = "wrong";
@@ -1298,8 +1366,8 @@ function goToCard(pos) {
   const idx = SESSION.queue[pos];
   SESSION.cur = { idx, word: SESSION.words[idx] };
   SESSION.flipped = false;
-  // Persist resume position for this level
-  const key = `lvl${SESSION.level}`;
+  // Persist resume position for this deck
+  const key = deckKey(SESSION.deck);
   STATE.progress[key] = STATE.progress[key] || { right: [], wrong: [] };
   STATE.progress[key].lastIdx = idx;
   save();
@@ -1384,7 +1452,7 @@ function mark(correct) {
   const idx = SESSION.cur.idx;
   SESSION.marks[idx] = correct ? "right" : "wrong";
   // Persist to lifetime progress
-  const key = `lvl${SESSION.level}`;
+  const key = deckKey(SESSION.deck);
   const p = STATE.progress[key] || (STATE.progress[key] = { right: [], wrong: [] });
   p.right = p.right.filter(i => i !== idx);
   p.wrong = p.wrong.filter(i => i !== idx);
@@ -1443,7 +1511,7 @@ function showDone() {
   $("#retryWrong").style.opacity = c.wrong === 0 ? 0.4 : 1;
 
   // "Most missed": cards wrong 2+ times. Only enable if any exist.
-  const missed = getMostMissedIndexes(SESSION.level);
+  const missed = getMostMissedIndexes(SESSION.deck);
   const mm = $("#mostMissedBtn");
   mm.disabled = missed.length === 0;
   mm.style.opacity = missed.length === 0 ? 0.4 : 1;
@@ -1750,19 +1818,24 @@ function ttsUrl(text, lang) {
 }
 
 /* Speak via <audio> element so CarPlay actually plays the audio.
-   Falls back to speechSynthesis if the audio fails to load (offline, etc.). */
+   Falls back to speechSynthesis if the audio fails to load (offline, etc.).
+
+   iOS Safari rejects cross-origin <audio src="https://..."> with a generic
+   NotSupportedError even when CORS would allow it. Workaround: fetch the
+   audio bytes ourselves, then play the blob: URL (which iOS treats as
+   same-origin and accepts without complaint). */
 function speakViaAudio(text, lang, opts = {}) {
-  return new Promise((resolve) => {
+  return new Promise(async (resolve) => {
     if (!text) { resolve(); return; }
     const a = ensureTtsAudio();
+    let blobUrl = null;
     let done = false;
     const finish = (ok, reason) => {
       if (done) return; done = true;
       a.removeEventListener("ended", onEnd);
       a.removeEventListener("error", onErr);
+      if (blobUrl) { try { URL.revokeObjectURL(blobUrl); } catch(_) {} }
       if (!ok && opts.fallback !== false) {
-        // Network/CORS failed — fall back to speechSynthesis so the user
-        // at least hears something (won't route to CarPlay, but better than silence).
         TTS_ENGINE = "device";
         TTS_LAST_ERROR = reason;
         console.warn("[HSK] Web TTS failed (" + reason + ") — falling back to device speechSynthesis. Audio will NOT route to CarPlay.");
@@ -1775,17 +1848,56 @@ function speakViaAudio(text, lang, opts = {}) {
       }
     };
     const onEnd = () => finish(true, "ended");
-    const onErr = (e) => finish(false, "media error: " + (a.error ? a.error.code : "?"));
+    const onErr = () => finish(false, "media error: " + (a.error ? a.error.code : "?"));
     a.addEventListener("ended", onEnd);
     a.addEventListener("error", onErr);
+
+    // Helper: surface the current async step in the persistent diag line
+    // so we can see exactly where iOS Safari hangs if it does.
+    const step = (s) => {
+      TTS_LAST_ERROR = s;
+      TTS_ENGINE = "device";   // tentative — switches to "web" only on full success
+      refreshDriveDiag();
+    };
+
     try {
-      a.src = ttsUrl(text, lang);
+      // 1) Fetch the audio bytes via CORS-friendly fetch(), with a timeout
+      //    so we never hang forever if a preflight or response stalls.
+      step("fetching…");
+      const url = ttsUrl(text, lang);
+      const ctrl = new AbortController();
+      const tHandle = setTimeout(() => ctrl.abort(), 8000);
+      let res;
+      try {
+        res = await fetch(url, { mode: "cors", credentials: "omit", signal: ctrl.signal });
+      } finally { clearTimeout(tHandle); }
+      if (!res.ok) { finish(false, "fetch HTTP " + res.status); return; }
+
+      step("reading bytes…");
+      const ab = await res.arrayBuffer();
+      if (!ab || !ab.byteLength) { finish(false, "empty audio response"); return; }
+
+      // 2) Force the blob MIME type to audio/mpeg — Safari refuses to play
+      //    blob: URLs whose type doesn't match a known audio mime.
+      step("decoding…");
+      const audioBlob = new Blob([ab], { type: "audio/mpeg" });
+      blobUrl = URL.createObjectURL(audioBlob);
+      a.src = blobUrl;
       a.volume = 1.0;
-      a.play().then(
-        () => { /* started OK; ended/error handlers will finish */ },
-        (err) => finish(false, "play() rejected: " + (err && err.message ? err.message : err))
-      );
-    } catch (e) { finish(false, "exception: " + e.message); }
+
+      step("playing…");
+      try {
+        await a.play();
+        // started OK — ended/error handlers finish the promise
+      } catch (err) {
+        finish(false, "play() rejected: " + (err && err.message ? err.message : err));
+      }
+    } catch (e) {
+      const reason = (e && e.name === "AbortError")
+        ? "fetch timed out (8s)"
+        : "fetch failed: " + (e && e.message ? e.message : e);
+      finish(false, reason);
+    }
   });
 }
 
@@ -1976,9 +2088,11 @@ function relativeTime(ts) {
   return `${Math.floor(days / 365)} yr ago`;
 }
 
-/* Cards the user has gotten wrong at least N times (default 2). Sorted hardest first. */
-function getMostMissedIndexes(level, minWrong = 2) {
-  const p = STATE.progress[`lvl${level}`];
+/* Cards the user has gotten wrong at least N times (default 2). Sorted hardest first.
+   Accepts a deck object so it can resolve the right progress bucket across HSK
+   standards. (Used to take a numeric level id, which couldn't disambiguate 2.0 vs 3.0.) */
+function getMostMissedIndexes(deck, minWrong = 2) {
+  const p = STATE.progress[deckKey(deck)];
   if (!p || !p.cards) return [];
   return Object.entries(p.cards)
     .filter(([_, s]) => (s.w || 0) >= minWrong)
@@ -1990,7 +2104,9 @@ function getMostMissedIndexes(level, minWrong = 2) {
    spec (LEVELS entry) or a cumulative spec (CUMULATIVE entry — has .levels).
    `totalFn` resolves the total word count (cumulative needs to sum). */
 function buildDeckCard(deck, opts) {
-  const key = `lvl${deck.id}`;
+  // `deck` here is a metadata entry (LEVELS/CUMULATIVE/REVIEW_DECK), so it
+  // doesn't yet carry a `standard` field — fall back to the active setting.
+  const key = deckKey({ id: deck.id, standard: deck.standard || STATE.settings.hskStandard });
   const p = STATE.progress[key] || { right: [], wrong: [] };
   const known = new Set([...p.right, ...p.wrong]).size;
   const total = opts.total;
@@ -2021,7 +2137,7 @@ function buildDeckCard(deck, opts) {
   if (resetBtn && known > 0) {
     resetBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      resetDeck(deck.id, deck.name);
+      resetDeck({ id: deck.id, standard: deck.standard || STATE.settings.hskStandard }, deck.name);
     });
   }
   return btn;
@@ -2044,14 +2160,17 @@ function renderHome() {
       `<div class="stat-pill"><strong>${streak}</strong>day streak</div>`);
   }
 
-  // Page 1: standard decks (HSK 1..6)
+  // Page 1: standard decks (HSK 1..6 for v2, plus HSK 7–9 for v3)
+  const std = STATE.settings.hskStandard || "2.0";
   const grid = $("#levelGrid");
   grid.innerHTML = "";
   for (const lvl of LEVELS) {
-    const total = lvl.id === 1 ? HSK1.length : (STATE.cache[lvl.id]?.length || lvl.count);
+    const cached = STATE.cache[`${std}-${lvl.id}`];
+    const isEmbedded = (lvl.id === 1 && std === "2.0");
+    const total = isEmbedded ? HSK1.length : (cached?.length || lvl.count);
     grid.appendChild(buildDeckCard(lvl, {
       total,
-      needsDownload: lvl.id !== 1 && !STATE.cache[lvl.id],
+      needsDownload: !isEmbedded && !cached,
       deckArg: lvl.id
     }));
   }
@@ -2074,22 +2193,24 @@ function renderHome() {
 
   for (const cum of CUMULATIVE) {
     // Sum known word counts across underlying levels. Counts are approximate
-    // until each underlying level has been downloaded (after which we know
-    // the real length).
+    // until each underlying level has been downloaded; afterwards we report
+    // the real length from cache. Cache is keyed by `${standard}-${level}`.
     let total = 0;
     let needsDownload = false;
     for (const lvl of cum.levels) {
-      if (lvl === 1) total += HSK1.length;
-      else if (STATE.cache[lvl]) total += STATE.cache[lvl].length;
+      const cached = STATE.cache[`${std}-${lvl}`];
+      if (lvl === 1 && std === "2.0") total += HSK1.length;
+      else if (cached) total += cached.length;
       else { total += (LEVELS.find(l => l.id === lvl) || { count: 0 }).count; needsDownload = true; }
     }
     cgrid.appendChild(buildDeckCard(cum, { total, needsDownload, deckArg: cum }));
   }
 }
 
-function resetDeck(id, name) {
+function resetDeck(deckOrId, name) {
   if (!confirm(`Reset progress for ${name}? Your right/wrong tallies for this deck will be cleared.`)) return;
-  delete STATE.progress[`lvl${id}`];
+  const deck = (typeof deckOrId === "object") ? deckOrId : { id: deckOrId };
+  delete STATE.progress[deckKey(deck)];
   save();
   renderHome();
   toast(`${name} progress cleared`);
@@ -2139,6 +2260,7 @@ async function importProgress(file) {
     applyTheme();
     applyDirection();
     applyDrivingDisplay();
+    applyStandard();
     $("#optShuffle").checked    = STATE.settings.shuffle;
     $("#optAutoAudio").checked  = STATE.settings.autoAudio;
     $("#rateInput").value       = STATE.settings.rate;
@@ -2162,6 +2284,14 @@ function applyTheme() {
 /* Direction */
 function applyDirection() {
   $$("#segDirection button").forEach(b => b.classList.toggle("on", b.dataset.val === STATE.settings.direction));
+}
+/* HSK standard (2.0 ↔ 3.0). Swaps which level/cumulative metadata is active
+   so the home screen, progress storage, and CDN paths all follow the choice. */
+function applyStandard() {
+  const v = STATE.settings.hskStandard || "2.0";
+  LEVELS      = (v === "3.0") ? LEVELS_V3      : LEVELS_V2;
+  CUMULATIVE  = (v === "3.0") ? CUMULATIVE_V3  : CUMULATIVE_V2;
+  $$("#segHskStandard button").forEach(b => b.classList.toggle("on", b.dataset.val === v));
 }
 /* Driving display preference (segment) */
 function applyDrivingDisplay() {
@@ -2292,6 +2422,7 @@ function init() {
   applyTheme();
   applyDirection();
   applyDrivingDisplay();
+  applyStandard();
   $("#optShuffle").checked = STATE.settings.shuffle;
   $("#optAutoAudio").checked = STATE.settings.autoAudio;
   $("#rateInput").value = STATE.settings.rate;
@@ -2314,6 +2445,12 @@ function init() {
     STATE.settings.direction = b.dataset.val;
     applyDirection(); save();
     if (SESSION.cur) renderCard();
+  }));
+  $$("#segHskStandard button").forEach(b => b.addEventListener("click", () => {
+    STATE.settings.hskStandard = b.dataset.val;
+    applyStandard(); save();
+    renderHome();
+    toast(`Switched to HSK ${b.dataset.val}`);
   }));
   $("#optShuffle").addEventListener("change", e => { STATE.settings.shuffle = e.target.checked; save(); });
   $("#optAutoAudio").addEventListener("change", e => { STATE.settings.autoAudio = e.target.checked; save(); });
@@ -2371,13 +2508,13 @@ function init() {
     startSession(SESSION.deck, { onlyIndexes: wrong });
   });
   $("#mostMissedBtn").addEventListener("click", () => {
-    const missed = getMostMissedIndexes(SESSION.level);
+    const missed = getMostMissedIndexes(SESSION.deck);
     if (!missed.length) return;
     startSession(SESSION.deck, { onlyIndexes: missed });
   });
   $("#restartLevel").addEventListener("click", () => {
     if (!confirm(`Restart ${SESSION.deck.name} from scratch? This will clear your right/wrong tallies for this deck.`)) return;
-    delete STATE.progress[`lvl${SESSION.deck.id}`];
+    delete STATE.progress[deckKey(SESSION.deck)];
     save();
     startSession(SESSION.deck);
   });
