@@ -742,6 +742,13 @@
   </div>
   <div class="row">
     <div>
+      <div class="label">Speak English in driving mode</div>
+      <div class="hint">Off → English meaning is shown on screen but not spoken</div>
+    </div>
+    <label class="switch"><input type="checkbox" id="optDrivingSpeakEn" /><span class="slider"></span></label>
+  </div>
+  <div class="row">
+    <div>
       <div class="label">Dark mode</div>
       <div class="hint">Switch theme</div>
     </div>
@@ -1113,7 +1120,7 @@ const CDN_SOURCES = (level, standard = "2.0") => {
    State + storage
    ========================================================= */
 const LS_KEY = "hsk-study-v1";
-const CACHE_VERSION = 6;       // bump to invalidate cached vocab from older parsers
+const CACHE_VERSION = 7;       // bump to invalidate cached vocab from older parsers
 const STATE = {
   settings: {
     theme: "light",
@@ -1125,6 +1132,7 @@ const STATE = {
     rate: 0.85,
     drivingDisplay: "cn-pin",  // "cn" = hanzi only, "cn-pin" = hanzi + pinyin
     drivingPause: 2.0,         // seconds between speaking hanzi and meaning
+    drivingSpeakEnglish: true, // false → skip English TTS in driving mode (visual only)
     hskStandard: "2.0",        // "2.0" (2010 standard, default) or "3.0" (2021 standard)
     conciseDef: true           // true → show first ~2 meanings; false → show all
   },
@@ -1298,7 +1306,21 @@ function parseCsvLine(line) {
 
 /* Parse the curated HSK 3.0 sheet CSV. Columns (per the user's sheet):
    A=#, B=Chinese, C=Pinyin, D=English, E=Part of Speech, F=Level.
-   We only consume B/C/D — POS and Level are informational. */
+   We only consume B/C/D — POS and Level are informational.
+
+   Some sheet rows annotate the hanzi with a reading-index suffix (e.g.
+   "别1" for character 别's reading #1) and similar artifacts in pinyin.
+   We strip trailing ASCII digits, full-width/ASCII parentheses, asterisks,
+   and stray whitespace from both the hanzi and pinyin columns so cards
+   display cleanly and the TTS doesn't pronounce a literal "one" after
+   each character. */
+function cleanSheetField(s) {
+  return String(s || "")
+    .trim()
+    .replace(/[\s\d（）()\*]+$/g, "")
+    .trim();
+}
+
 function parseHsk3Csv(text) {
   const lines = String(text).split(/\r?\n/);
   if (lines.length < 2) return [];
@@ -1308,9 +1330,9 @@ function parseHsk3Csv(text) {
     const line = lines[i];
     if (!line || !line.trim()) continue;
     const row = parseCsvLine(line);
-    const h = (row[1] || "").trim();
-    const p = (row[2] || "").trim();
-    const e = (row[3] || "").trim();
+    const h = cleanSheetField(row[1]);
+    const p = cleanSheetField(row[2]);
+    const e = (row[3] || "").trim();   // English meanings keep all punctuation
     if (h) out.push({ h, p, e, s: "" });
   }
   return out;
@@ -1709,6 +1731,20 @@ let zhVoice = null;
 let enVoices = [];
 let enVoice = null;
 
+/* macOS ships a bundle of classic "novelty" voices (Bells, Boing, Cellos,
+   Wobble, Zarvox, etc.) under the en-US locale. They're sound effects, not
+   real speech — Web Speech enumerates them anyway. Filter them out so the
+   picker only shows actual TTS voices the user might pick on purpose. */
+const NOVELTY_VOICES = new Set([
+  "Albert", "Bad News", "Bahh", "Bells", "Boing", "Bubbles", "Cellos",
+  "Deranged", "Fred", "Good News", "Hysterical", "Jester", "Junior",
+  "Kathy", "Organ", "Pipe Organ", "Princess", "Ralph", "Superstar",
+  "Trinoids", "Whisper", "Wobble", "Zarvox"
+]);
+function isNoveltyVoice(v) {
+  return v && NOVELTY_VOICES.has((v.name || "").trim());
+}
+
 /* Sort voices: enhanced/premium first (the iOS Siri-quality ones), then the
    matching language code, then alphabetical. Applied to both lists. */
 function sortVoicesByQuality(voices, preferLangRe) {
@@ -1728,14 +1764,17 @@ function refreshVoices() {
   const voices = speechSynthesis.getVoices() || [];
 
   zhVoices = sortVoicesByQuality(
-    voices.filter(v => /^zh/i.test(v.lang) || /chinese|mandarin|普通话|国语|中文/i.test(v.name)),
+    voices.filter(v =>
+      !isNoveltyVoice(v) &&
+      (/^zh/i.test(v.lang) || /chinese|mandarin|普通话|国语|中文/i.test(v.name))
+    ),
     /zh(-|_)?CN/i
   );
   zhVoice = (STATE.settings.voiceURI && zhVoices.find(v => v.voiceURI === STATE.settings.voiceURI))
             || zhVoices[0] || null;
 
   enVoices = sortVoicesByQuality(
-    voices.filter(v => /^en/i.test(v.lang)),
+    voices.filter(v => !isNoveltyVoice(v) && /^en/i.test(v.lang)),
     /en(-|_)?US/i
   );
   enVoice = (STATE.settings.voiceURI_en && enVoices.find(v => v.voiceURI === STATE.settings.voiceURI_en))
@@ -2134,9 +2173,13 @@ async function drivingPlayCurrent() {
   updateMediaSessionMetadata();
 
   const englishToSpeak = displayEnglish(w.e);
-  const promptText = enFirst ? englishToSpeak : w.h;
+  // If the user has muted English driving audio (because the available
+  // compact en voices sound bad), nuke whichever phase would speak English.
+  // The text still appears on the card — only the audio is suppressed.
+  const muteEn = STATE.settings.drivingSpeakEnglish === false;
+  const promptText = enFirst ? (muteEn ? "" : englishToSpeak) : w.h;
   const promptLang = enFirst ? "en"  : "zh-CN";
-  const answerText = enFirst ? w.h   : englishToSpeak;
+  const answerText = enFirst ? w.h   : (muteEn ? "" : englishToSpeak);
   const answerLang = enFirst ? "zh-CN" : "en";
 
   // Phase 1: speak the prompt (matches what's on the card front)
@@ -2483,6 +2526,7 @@ async function importProgress(file) {
     $("#rateLabel").textContent = `${Number(STATE.settings.rate).toFixed(2)}×`;
     $("#drivePauseInput").value       = STATE.settings.drivingPause;
     $("#drivePauseLabel").textContent = `${Number(STATE.settings.drivingPause).toFixed(1)}s`;
+    $("#optDrivingSpeakEn").checked   = STATE.settings.drivingSpeakEnglish !== false;
     refreshVoices();
     renderHome();
     closeSheet();
@@ -2646,6 +2690,7 @@ function init() {
   $("#rateLabel").textContent = `${Number(STATE.settings.rate).toFixed(2)}×`;
   $("#drivePauseInput").value = STATE.settings.drivingPause;
   $("#drivePauseLabel").textContent = `${Number(STATE.settings.drivingPause).toFixed(1)}s`;
+  $("#optDrivingSpeakEn").checked = STATE.settings.drivingSpeakEnglish !== false;
   renderHome();
   attachPeek();
   attachStackTaps();
@@ -2701,6 +2746,10 @@ function init() {
   $("#drivePauseInput").addEventListener("input", e => {
     STATE.settings.drivingPause = parseFloat(e.target.value);
     $("#drivePauseLabel").textContent = `${STATE.settings.drivingPause.toFixed(1)}s`;
+    save();
+  });
+  $("#optDrivingSpeakEn").addEventListener("change", e => {
+    STATE.settings.drivingSpeakEnglish = e.target.checked;
     save();
   });
   $("#resetProgress").addEventListener("click", () => {
