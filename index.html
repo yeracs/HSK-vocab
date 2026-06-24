@@ -1693,10 +1693,16 @@ function ensureTtsAudio() {
   return a;
 }
 
-function googleTtsUrl(text, lang) {
-  // `client=tw-ob` is the undocumented-but-stable variant; `tl` is the lang.
-  const q = encodeURIComponent(String(text).slice(0, 190));
-  return `https://translate.google.com/translate_tts?ie=UTF-8&q=${q}&tl=${lang}&client=tw-ob`;
+/* Build a TTS URL for the given text + language.
+   We use StreamElements' public TTS proxy because it (a) sends CORS headers
+   that iOS Safari accepts and (b) wraps Amazon Polly + Google Cloud voices.
+   Google's own translate_tts endpoint works in desktop browsers but iOS
+   Safari rejects it as cross-origin media without CORS headers. */
+function ttsUrl(text, lang) {
+  const q = encodeURIComponent(String(text).slice(0, 280));
+  // Polly voice IDs: Zhiyu = Mandarin female, Joanna = US English female.
+  const voice = lang.startsWith("zh") ? "Zhiyu" : "Joanna";
+  return `https://api.streamelements.com/kappa/v2/speech?voice=${voice}&text=${q}`;
 }
 
 /* Speak via <audio> element so CarPlay actually plays the audio.
@@ -1714,7 +1720,7 @@ function speakViaAudio(text, lang, opts = {}) {
         // Network/CORS failed — fall back to speechSynthesis so the user
         // at least hears something (won't route to CarPlay, but better than silence).
         TTS_ENGINE = "device";
-        console.warn("[HSK] Google TTS failed (" + reason + ") — falling back to device speechSynthesis. Audio will NOT route to CarPlay.");
+        console.warn("[HSK] Web TTS failed (" + reason + ") — falling back to device speechSynthesis. Audio will NOT route to CarPlay.");
         const fn = lang.startsWith("zh") ? speak : speakEnglish;
         fn(text, { onend: resolve, onerror: resolve });
       } else {
@@ -1727,7 +1733,7 @@ function speakViaAudio(text, lang, opts = {}) {
     a.addEventListener("ended", onEnd);
     a.addEventListener("error", onErr);
     try {
-      a.src = googleTtsUrl(text, lang);
+      a.src = ttsUrl(text, lang);
       a.volume = 1.0;
       a.play().then(
         () => { /* started OK; ended/error handlers will finish */ },
