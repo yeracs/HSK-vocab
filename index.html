@@ -702,14 +702,14 @@
     <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
       <div>
         <div class="label">Mandarin voice</div>
-        <div class="hint">Used for hanzi audio · ★ marks enhanced/Siri voices</div>
+        <div class="hint">Leave as "system default" to use your iOS/Mac voice (incl. Premium)</div>
       </div>
       <select id="voiceSelect" style="background:var(--surface-2); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:8px 10px; font:inherit; font-size:13px; max-width:60%"></select>
     </div>
     <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
       <div>
         <div class="label">English voice</div>
-        <div class="hint">Used for definition audio · ★ marks enhanced voices</div>
+        <div class="hint">Leave as "system default" to use your iOS/Mac voice (incl. Premium)</div>
       </div>
       <select id="voiceSelectEn" style="background:var(--surface-2); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:8px 10px; font:inherit; font-size:13px; max-width:60%"></select>
     </div>
@@ -1770,50 +1770,55 @@ function refreshVoices() {
     ),
     /zh(-|_)?CN/i
   );
-  zhVoice = (STATE.settings.voiceURI && zhVoices.find(v => v.voiceURI === STATE.settings.voiceURI))
-            || zhVoices[0] || null;
+  // Only honor an EXPLICIT user pick. When no pick is saved we leave the
+  // voice null so the SpeechSynthesisUtterance is sent without `u.voice`,
+  // which lets WebKit route to the OS's preferred voice — including Premium
+  // ones (Lili, Ava, etc.) that getVoices() refuses to enumerate. This is
+  // the behavior the older app version accidentally had.
+  zhVoice = STATE.settings.voiceURI
+    ? (zhVoices.find(v => v.voiceURI === STATE.settings.voiceURI) || null)
+    : null;
 
   enVoices = sortVoicesByQuality(
     voices.filter(v => !isNoveltyVoice(v) && /^en/i.test(v.lang)),
     /en(-|_)?US/i
   );
-  enVoice = (STATE.settings.voiceURI_en && enVoices.find(v => v.voiceURI === STATE.settings.voiceURI_en))
-            || enVoices[0] || null;
+  enVoice = STATE.settings.voiceURI_en
+    ? (enVoices.find(v => v.voiceURI === STATE.settings.voiceURI_en) || null)
+    : null;
 
   populateVoiceSelect();
   populateVoiceSelectEn();
 }
 
+/* "(Use system default)" is the recommended top option — it lets the OS
+   route to whatever voice the user picked in Settings → Spoken Content,
+   which often unlocks Premium voices the Web Speech API hides. */
+const DEFAULT_VOICE_OPTION =
+  `<option value="">(Use system default — recommended)</option>`;
+
 function populateVoiceSelect() {
   const sel = $("#voiceSelect");
   if (!sel) return;
-  if (!zhVoices.length) {
-    sel.innerHTML = `<option>No Chinese voice installed</option>`;
-    sel.disabled = true;
-    return;
-  }
   sel.disabled = false;
-  sel.innerHTML = zhVoices.map(v => {
+  const opts = zhVoices.map(v => {
     const tag = /enhanced|premium|neural|wavenet|siri/i.test(v.name) ? " ★" : "";
     return `<option value="${escapeHtml(v.voiceURI)}">${escapeHtml(v.name)} (${escapeHtml(v.lang)})${tag}</option>`;
   }).join("");
-  if (zhVoice) sel.value = zhVoice.voiceURI;
+  sel.innerHTML = DEFAULT_VOICE_OPTION + opts;
+  sel.value = zhVoice ? zhVoice.voiceURI : "";
 }
 
 function populateVoiceSelectEn() {
   const sel = $("#voiceSelectEn");
   if (!sel) return;
-  if (!enVoices.length) {
-    sel.innerHTML = `<option>No English voice installed</option>`;
-    sel.disabled = true;
-    return;
-  }
   sel.disabled = false;
-  sel.innerHTML = enVoices.map(v => {
+  const opts = enVoices.map(v => {
     const tag = /enhanced|premium|neural|wavenet|siri/i.test(v.name) ? " ★" : "";
     return `<option value="${escapeHtml(v.voiceURI)}">${escapeHtml(v.name)} (${escapeHtml(v.lang)})${tag}</option>`;
   }).join("");
-  if (enVoice) sel.value = enVoice.voiceURI;
+  sel.innerHTML = DEFAULT_VOICE_OPTION + opts;
+  sel.value = enVoice ? enVoice.voiceURI : "";
 }
 
 function speak(text, opts = {}) {
