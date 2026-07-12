@@ -1317,14 +1317,18 @@ const LEVELS_V2 = [
   { id: 5, name: "HSK 5", desc: "2500 words · advanced",        count: 2500 },
   { id: 6, name: "HSK 6", desc: "5000 words · proficient",      count: 5000 }
 ];
+// count reflects the actual per-level row count in the Google Sheets source
+// (exclusive-per-level, not the official cumulative totals). The dynamic
+// desc in renderHome always overrides these numeric labels, so users only
+// see this value on the very first load before the sheet has been fetched.
 const LEVELS_V3 = [
-  { id: 1, name: "HSK 1",   desc: "300 words · beginner",       count: 300 },
-  { id: 2, name: "HSK 2",   desc: "500 words · elementary",     count: 500 },
-  { id: 3, name: "HSK 3",   desc: "900 words · pre-intermediate", count: 900 },
-  { id: 4, name: "HSK 4",   desc: "1200 words · intermediate",  count: 1200 },
-  { id: 5, name: "HSK 5",   desc: "2500 words · upper-intermediate", count: 2500 },
-  { id: 6, name: "HSK 6",   desc: "3000 words · advanced",      count: 3000 },
-  { id: 7, name: "HSK 7–9", desc: "~11000 words · proficient",  count: 11000 }
+  { id: 1, name: "HSK 1",   desc: "300 words · beginner",           count: 300  },
+  { id: 2, name: "HSK 2",   desc: "200 words · elementary",         count: 200  },
+  { id: 3, name: "HSK 3",   desc: "500 words · pre-intermediate",   count: 500  },
+  { id: 4, name: "HSK 4",   desc: "1000 words · intermediate",      count: 1000 },
+  { id: 5, name: "HSK 5",   desc: "1600 words · upper-intermediate",count: 1600 },
+  { id: 6, name: "HSK 6",   desc: "1800 words · advanced",          count: 1800 },
+  { id: 7, name: "HSK 7–9", desc: "5600 words · proficient",        count: 5600 }
 ];
 
 /* Cumulative decks: each one mixes all levels up to N. Progress is tracked
@@ -2845,11 +2849,25 @@ function renderHome() {
   const std = STATE.settings.hskStandard || "2.0";
   const grid = $("#levelGrid");
   grid.innerHTML = "";
+  // HSK 1 AND HSK 2 are embedded in the 2.0 curated CSV — neither needs
+  // downloading. Older code only recognized HSK 1 which caused HSK 2 to
+  // wrongly say "downloads on first use" and let the pre-load estimate
+  // fall back to the stale LEVELS_V2 count.
+  const embeddedV2 = (lvlId) => std === "2.0" && (lvlId === 1 || lvlId === 2);
+  const embeddedV2Words = (lvlId) => lvlId === 1 ? HSK1 : HSK2_V2;
   for (const lvl of LEVELS) {
     const cached = STATE.cache[`${std}-${lvl.id}`];
-    const isEmbedded = (lvl.id === 1 && std === "2.0");
-    const total = isEmbedded ? HSK1.length : (cached?.length || lvl.count);
-    grid.appendChild(buildDeckCard(lvl, {
+    const isEmbedded = embeddedV2(lvl.id);
+    const total = isEmbedded
+      ? embeddedV2Words(lvl.id).length
+      : (cached?.length || lvl.count);
+    // Rebuild the description dynamically so the "150 words · beginner"
+    // label always matches the "0 / N" counter on the right. The level
+    // characterization ("beginner", "elementary", etc.) is preserved from
+    // the LEVELS entry's static desc.
+    const chars = (lvl.desc.split("·")[1] || "").trim();
+    const dynamicDesc = chars ? `${total} words · ${chars}` : `${total} words`;
+    grid.appendChild(buildDeckCard({ ...lvl, desc: dynamicDesc }, {
       total,
       needsDownload: !isEmbedded && !cached,
       deckArg: lvl.id
@@ -2873,18 +2891,42 @@ function renderHome() {
   }
 
   for (const cum of CUMULATIVE) {
-    // Sum known word counts across underlying levels. Counts are approximate
-    // until each underlying level has been downloaded; afterwards we report
-    // the real length from cache. Cache is keyed by `${standard}-${level}`.
+    // Estimate total word count for the cumulative deck. Two different
+    // shapes to handle:
+    //   • HSK 2.0 curated only (levels ⊆ {1,2}): simple sum of curated counts.
+    //   • HSK 2.0 spanning ≥3: drkameleon's CDN data is CUMULATIVE — the file
+    //     for HSK N already contains HSK 1..N. So we take the max level's
+    //     cached (or declared) count, which correctly accounts for the
+    //     curated HSK 1/2 words getting dedup'd by hanzi against the CDN.
+    //   • HSK 3.0: sheets are exclusive-per-level, so sum them up.
     let total = 0;
     let needsDownload = false;
-    for (const lvl of cum.levels) {
-      const cached = STATE.cache[`${std}-${lvl}`];
-      if (lvl === 1 && std === "2.0") total += HSK1.length;
-      else if (cached) total += cached.length;
-      else { total += (LEVELS.find(l => l.id === lvl) || { count: 0 }).count; needsDownload = true; }
+    const maxLevel = Math.max(...cum.levels);
+
+    if (std === "2.0" && maxLevel >= 3) {
+      const cached = STATE.cache[`${std}-${maxLevel}`];
+      if (cached) total = cached.length;
+      else { total = (LEVELS.find(l => l.id === maxLevel) || { count: 0 }).count; needsDownload = true; }
+    } else {
+      for (const lvl of cum.levels) {
+        if (embeddedV2(lvl)) {
+          total += embeddedV2Words(lvl).length;
+          continue;
+        }
+        const cached = STATE.cache[`${std}-${lvl}`];
+        if (cached) total += cached.length;
+        else {
+          total += (LEVELS.find(l => l.id === lvl) || { count: 0 }).count;
+          needsDownload = true;
+        }
+      }
     }
-    cgrid.appendChild(buildDeckCard(cum, { total, needsDownload, deckArg: cum }));
+
+    // Dynamic desc so the label always matches the counter.
+    const dynamicDesc = `${total} words`;
+    cgrid.appendChild(buildDeckCard({ ...cum, desc: dynamicDesc }, {
+      total, needsDownload, deckArg: cum
+    }));
   }
 }
 
